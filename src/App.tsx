@@ -1,11 +1,12 @@
 // ============================================================
-// App.tsx - 主應用程式
-// 組合所有元件，管理全域狀態
+// App.tsx v2 - 整合認證、分頁、手繪 Modal
 // ============================================================
 
 import { useState, useRef, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AppMode, WidgetType, ThemeName } from './types'
+import { useAuth } from './hooks/useAuth'
+import { usePages } from './hooks/usePages'
 import { useWidgets } from './hooks/useWidgets'
 import { useTheme } from './hooks/useTheme'
 import { FloatingBackground } from './components/effects/FloatingBackground'
@@ -13,183 +14,142 @@ import { PetalRain } from './components/effects/PetalRain'
 import { WhisperMessages } from './components/effects/WhisperMessages'
 import { InfiniteCanvas } from './components/Canvas/InfiniteCanvas'
 import { Toolbar } from './components/ui/Toolbar'
+import { PageTabs } from './components/pages/PageTabs'
+import { LoginScreen } from './components/auth/LoginScreen'
+import { DrawingCanvas } from './components/ui/DrawingCanvas'
 
 export default function App() {
   const { theme, changeTheme } = useTheme()
-  const {
-    widgets,
-    isLoading,
-    isOnline,
-    addWidget,
-    updateWidget,
-    deleteWidget,
-    bringToFront,
-  } = useWidgets()
+  const { status, spaceId, error, isCreatingNew, setIsCreatingNew, login, register, logout } = useAuth()
+
+  const { pages, currentPageId, setCurrentPageId, addPage, renamePage, removePage } = usePages(spaceId)
+  const { widgets, isLoading, isOnline, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront } = useWidgets(spaceId, currentPageId)
 
   const [mode, setMode] = useState<AppMode>('edit')
   const [isPetalActive, setIsPetalActive] = useState(false)
   const [isWhisperActive, setIsWhisperActive] = useState(false)
+  const [showDrawingCanvas, setShowDrawingCanvas] = useState(false)
 
-  // 畫布 DOM ref（用於計算新 widget 的初始位置）
   const canvasRef = useRef<HTMLDivElement | null>(null)
 
-  // 計算畫布可視中心（新增 widget 時用）
-  const getCanvasCenter = useCallback(() => {
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    // 畫布 4000x4000，起始 offset = -2000
-    return {
-      x: 2000 - vw / 2 + vw * 0.3 + (Math.random() - 0.5) * 200,
-      y: 2000 - vh / 2 + vh * 0.3 + (Math.random() - 0.5) * 200,
-    }
-  }, [])
+  const getCanvasCenter = useCallback(() => ({
+    x: 2000 - window.innerWidth / 2 + window.innerWidth * 0.3 + (Math.random() - 0.5) * 200,
+    y: 2000 - window.innerHeight / 2 + window.innerHeight * 0.3 + (Math.random() - 0.5) * 200,
+  }), [])
 
-  const handleAddWidget = (type: WidgetType) => {
-    addWidget(type, getCanvasCenter())
+  const handleAddWidget = (type: WidgetType) => addWidget(type, getCanvasCenter())
+
+  // 手繪完成 → 建立 drawing widget
+  const handleDrawingSave = (imageUrl: string) => {
+    const widgetId = addWidget('drawing', getCanvasCenter())
+    // 等下一個 tick 讓 widget 先建立，再更新 imageUrl
+    setTimeout(() => {
+      // 找到剛建立的 widget 更新 content
+      updateWidget(widgetId as string, { content: { imageUrl, caption: '' } })
+    }, 100)
+    setShowDrawingCanvas(false)
   }
 
-  const toggleMode = () => setMode(prev => prev === 'edit' ? 'view' : 'edit')
-
-  // ── 載入畫面 ──────────────────────────────────────
-  if (isLoading) {
+  // ── 載入中 ────────────────────────────────────────────
+  if (status === 'loading') {
     return (
-      <div
-        className="fixed inset-0 flex flex-col items-center justify-center"
-        style={{ background: theme.backgroundGradient }}
-      >
+      <div className="fixed inset-0 flex items-center justify-center" style={{ background: theme.backgroundGradient }}>
         <FloatingBackground theme={theme} />
-        <motion.div
-          className="text-center relative"
-          style={{ zIndex: 10 }}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <motion.div
-            className="text-5xl mb-4"
-            animate={{ scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            ✨
-          </motion.div>
-          <p style={{ color: theme.accent, fontFamily: '"Noto Serif TC", serif', fontSize: 18 }}>
-            回憶祭壇
-          </p>
-          <p className="mt-2 text-sm" style={{ color: theme.textSecondary }}>
-            載入中...
-          </p>
+        <motion.div className="text-center z-10" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div className="text-5xl mb-3" animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }}>✨</motion.div>
+          <p style={{ color: theme.accent, fontFamily: '"Noto Serif TC", serif' }}>回憶祭壇</p>
         </motion.div>
       </div>
     )
   }
 
+  // ── 未登入 ────────────────────────────────────────────
+  if (status === 'unauthenticated') {
+    return (
+      <LoginScreen
+        theme={theme}
+        isCreatingNew={isCreatingNew}
+        onToggleMode={setIsCreatingNew}
+        onLogin={login}
+        onRegister={register}
+        error={error}
+      />
+    )
+  }
+
+  // ── 主畫面 ────────────────────────────────────────────
   return (
-    <div
-      className="fixed inset-0 overflow-hidden"
-      style={{ background: theme.backgroundGradient }}
-    >
-      {/* 動態背景光暈 */}
+    <div className="fixed inset-0 overflow-hidden" style={{ background: theme.backgroundGradient }}>
       <FloatingBackground theme={theme} />
 
       {/* 無限畫布 */}
-      <InfiniteCanvas
-        widgets={widgets}
-        mode={mode}
-        theme={theme}
-        onUpdateWidget={updateWidget}
-        onDeleteWidget={deleteWidget}
-        onBringToFront={bringToFront}
-        onCanvasRef={(ref) => { canvasRef.current = ref }}
-      />
+      {!showDrawingCanvas && currentPageId && (
+        <InfiniteCanvas
+          widgets={widgets}
+          mode={mode}
+          theme={theme}
+          onUpdateWidget={updateWidget}
+          onDeleteWidget={deleteWidget}
+          onDuplicateWidget={duplicateWidget}
+          onBringToFront={bringToFront}
+          onCanvasRef={r => { canvasRef.current = r }}
+        />
+      )}
 
-      {/* 工具列（瀏覽模式下漸隱） */}
+      {/* 工具列 */}
+      {!showDrawingCanvas && (
+        <motion.div animate={{ opacity: mode === 'view' ? 0.25 : 1 }}
+          style={{ pointerEvents: mode === 'view' ? 'none' : 'auto' }}
+          onMouseEnter={e => { if (mode === 'view') { (e.currentTarget as HTMLDivElement).style.opacity = '1'; (e.currentTarget as HTMLDivElement).style.pointerEvents = 'auto' } }}
+          onMouseLeave={e => { if (mode === 'view') { (e.currentTarget as HTMLDivElement).style.opacity = '0.25'; (e.currentTarget as HTMLDivElement).style.pointerEvents = 'none' } }}>
+          <Toolbar
+            mode={mode} theme={theme} isOnline={isOnline}
+            onModeToggle={() => setMode(m => m === 'edit' ? 'view' : 'edit')}
+            onAddWidget={handleAddWidget}
+            onAddDrawing={() => setShowDrawingCanvas(true)}
+            onThemeChange={(n: ThemeName) => changeTheme(n)}
+            onTriggerPetals={() => !isPetalActive && setIsPetalActive(true)}
+            onTriggerWhispers={() => !isWhisperActive && setIsWhisperActive(true)}
+            onLogout={logout}
+          />
+        </motion.div>
+      )}
+
+      {/* 分頁 Tabs */}
+      {!showDrawingCanvas && (
+        <PageTabs
+          pages={pages} currentPageId={currentPageId} mode={mode} theme={theme}
+          onSelect={setCurrentPageId}
+          onAdd={addPage} onRename={renamePage} onDelete={removePage}
+        />
+      )}
+
+      {/* 手繪畫布 Modal */}
       <AnimatePresence>
-        {(mode === 'edit' || true) && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: mode === 'view' ? 0.3 : 1 }}
-            style={{ pointerEvents: mode === 'view' ? 'none' : ('auto' as React.CSSProperties['pointerEvents']) }}
-            onMouseEnter={(e) => {
-              if (mode === 'view') {
-                ;(e.currentTarget as HTMLDivElement).style.opacity = '1'
-                ;(e.currentTarget as HTMLDivElement).style.pointerEvents = 'auto'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (mode === 'view') {
-                ;(e.currentTarget as HTMLDivElement).style.opacity = '0.3'
-                ;(e.currentTarget as HTMLDivElement).style.pointerEvents = 'none'
-              }
-            }}
-          >
-            <Toolbar
-              mode={mode}
-              theme={theme}
-              isOnline={isOnline}
-              onModeToggle={toggleMode}
-              onAddWidget={handleAddWidget}
-              onThemeChange={(name: ThemeName) => changeTheme(name)}
-              onTriggerPetals={() => !isPetalActive && setIsPetalActive(true)}
-              onTriggerWhispers={() => !isWhisperActive && setIsWhisperActive(true)}
-            />
-          </motion.div>
+        {showDrawingCanvas && (
+          <DrawingCanvas
+            theme={theme} spaceId={spaceId}
+            onSave={handleDrawingSave}
+            onClose={() => setShowDrawingCanvas(false)}
+          />
         )}
       </AnimatePresence>
 
-      {/* 彩蛋：花瓣雨 */}
-      <PetalRain
-        isActive={isPetalActive}
-        onComplete={() => setIsPetalActive(false)}
-      />
+      {/* 花瓣雨 */}
+      <PetalRain isActive={isPetalActive} onComplete={() => setIsPetalActive(false)} />
 
-      {/* 彩蛋：悄悄話流星 */}
-      <WhisperMessages
-        isActive={isWhisperActive}
-        onComplete={() => setIsWhisperActive(false)}
-        accentColor={theme.accent}
-      />
+      {/* 悄悄話 */}
+      <WhisperMessages isActive={isWhisperActive} onComplete={() => setIsWhisperActive(false)} accentColor={theme.accent} />
 
-      {/* 空畫布提示（無 widget 時） */}
+      {/* 空畫布提示 */}
       <AnimatePresence>
-        {widgets.length === 0 && mode === 'edit' && (
-          <motion.div
-            className="fixed inset-0 flex flex-col items-center justify-center pointer-events-none"
-            style={{ zIndex: 2 }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.p
-              className="text-center text-lg"
-              style={{
-                color: 'var(--text-secondary)',
-                fontFamily: '"Noto Serif TC", serif',
-              }}
-              animate={{ opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 3, repeat: Infinity }}
-            >
+        {widgets.length === 0 && mode === 'edit' && !isLoading && !showDrawingCanvas && (
+          <motion.div className="fixed inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ zIndex: 2 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.p className="text-center text-lg" style={{ color: 'var(--text-secondary)', fontFamily: '"Noto Serif TC", serif' }}
+              animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 3, repeat: Infinity }}>
               點擊「新增」開始記錄你們的回憶 ✨
             </motion.p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 模式切換提示 */}
-      <AnimatePresence>
-        {mode === 'view' && (
-          <motion.div
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm"
-            style={{
-              background: 'var(--glass-bg)',
-              border: '1px solid var(--glass-border)',
-              color: 'var(--text-secondary)',
-              backdropFilter: 'blur(20px)',
-              zIndex: 100,
-            }}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-          >
-            移動滑鼠到頂部顯示工具列
           </motion.div>
         )}
       </AnimatePresence>

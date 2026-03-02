@@ -73,9 +73,11 @@ export const WHISPER_MESSAGES = [
 ]
 
 /** 預設 Widget 尺寸 */
-export const WIDGET_DEFAULTS = {
-  polaroid: { width: 220, height: 280 },
+export const WIDGET_DEFAULTS: Record<string, { width: number; height: number }> = {
+  photo:    { width: 220, height: 280 },
   sticker:  { width: 200, height: 140 },
   timer:    { width: 240, height: 180 },
   weather:  { width: 180, height: 160 },
+  video:    { width: 280, height: 220 },
+  drawing:  { width: 240, height: 240 },
 }
