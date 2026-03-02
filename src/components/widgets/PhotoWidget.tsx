@@ -153,6 +153,8 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
             className="absolute -top-9 left-0 flex gap-1"
             style={{ zIndex: 20 }}
             // 阻止事件冒泡到 BaseWidget，否則點按鈕會觸發取消選取
+            onMouseDown={e => e.stopPropagation()}
+            onMouseUp={e => e.stopPropagation()}
             onPointerDown={e => e.stopPropagation()}
             onPointerUp={e => e.stopPropagation()}
           >
