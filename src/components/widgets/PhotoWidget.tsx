@@ -149,16 +149,26 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
 
         {/* 風格切換（編輯 + 選取時顯示） */}
         {isEditMode && isSelected && (
-          <div className="absolute -top-9 left-0 flex gap-1">
+          <div
+            className="absolute -top-9 left-0 flex gap-1"
+            style={{ zIndex: 20 }}
+            // 阻止事件冒泡到 BaseWidget，否則點按鈕會觸發取消選取
+            onPointerDown={e => e.stopPropagation()}
+            onPointerUp={e => e.stopPropagation()}
+          >
             {(Object.keys(STYLE_LABELS) as PhotoStyle[]).map(s => (
               <button key={s}
-                className="px-2 py-0.5 rounded-lg text-xs"
+                className="px-2 py-1 rounded-lg text-xs"
                 style={{
-                  background: content.style === s ? 'var(--accent)' : 'rgba(0,0,0,0.7)',
+                  background: content.style === s ? 'var(--accent)' : 'rgba(0,0,0,0.85)',
                   color: content.style === s ? '#fff' : 'var(--text-secondary)',
                   border: '1px solid var(--glass-border)',
+                  minHeight: 28, // 手機觸控目標
                 }}
-                onClick={() => onUpdate({ content: { ...content, style: s } })}>
+                onClick={e => {
+                  e.stopPropagation()
+                  onUpdate({ content: { ...content, style: s } })
+                }}>
                 {STYLE_LABELS[s]}
               </button>
             ))}

@@ -87,6 +87,25 @@ export async function deleteWidget(widgetId: string): Promise<void> {
   await supabase.from('widgets').delete().eq('id', widgetId)
 }
 
+/** 刪除整個空間（widgets + pages + space 記錄全清） */
+export async function deleteSpace(spaceId: string): Promise<boolean> {
+  if (!supabase) return false
+  // 順序：先刪 widgets → 再刪 pages → 最後刪 space
+  const { error: e1 } = await supabase.from('widgets').delete().eq('space_id', spaceId)
+  if (e1) { console.error('刪除 widgets 失敗:', e1); return false }
+  const { error: e2 } = await supabase.from('pages').delete().eq('space_id', spaceId)
+  if (e2) { console.error('刪除 pages 失敗:', e2); return false }
+  const { error: e3 } = await supabase.from('spaces').delete().eq('id', spaceId)
+  if (e3) { console.error('刪除 space 失敗:', e3); return false }
+  return true
+}
+
+/** Keepalive ping（防止 Supabase 免費版閒置停機） */
+export async function ping(spaceId: string): Promise<void> {
+  if (!supabase) return
+  await supabase.from('spaces').select('id').eq('id', spaceId).limit(1)
+}
+
 // ── 檔案上傳（照片 / 影片 / 繪圖） ───────────────────────
 export async function uploadFile(
   file: File | Blob,

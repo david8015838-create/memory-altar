@@ -2,7 +2,7 @@
 // App.tsx v2 - 整合認證、分頁、手繪 Modal
 // ============================================================
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AppMode, WidgetType, ThemeName } from './types'
 import { useAuth } from './hooks/useAuth'
@@ -17,6 +17,8 @@ import { Toolbar } from './components/ui/Toolbar'
 import { PageTabs } from './components/pages/PageTabs'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { DrawingCanvas } from './components/ui/DrawingCanvas'
+import { ConfirmModal } from './components/ui/ConfirmModal'
+import { deleteSpace, ping } from './lib/supabase'
 
 export default function App() {
   const { theme, changeTheme } = useTheme()
@@ -29,8 +31,26 @@ export default function App() {
   const [isPetalActive, setIsPetalActive] = useState(false)
   const [isWhisperActive, setIsWhisperActive] = useState(false)
   const [showDrawingCanvas, setShowDrawingCanvas] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const canvasRef = useRef<HTMLDivElement | null>(null)
+
+  // ── Keepalive：每 4 分鐘 ping 一次，防止 Supabase 免費版閒置停機 ──
+  useEffect(() => {
+    if (!spaceId) return
+    const id = setInterval(() => ping(spaceId), 4 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [spaceId])
+
+  // ── 刪除整個房間 ──────────────────────────────────────
+  const handleDeleteRoom = async () => {
+    setIsDeleting(true)
+    const ok = await deleteSpace(spaceId)
+    setIsDeleting(false)
+    setShowDeleteConfirm(false)
+    if (ok) logout()  // 刪除成功後登出
+  }
 
   const getCanvasCenter = useCallback(() => ({
     x: 2000 - window.innerWidth / 2 + window.innerWidth * 0.3 + (Math.random() - 0.5) * 200,
@@ -96,23 +116,39 @@ export default function App() {
         />
       )}
 
-      {/* 工具列 */}
-      {!showDrawingCanvas && (
-        <motion.div animate={{ opacity: mode === 'view' ? 0.25 : 1 }}
-          style={{ pointerEvents: mode === 'view' ? 'none' : 'auto' }}
-          onMouseEnter={e => { if (mode === 'view') { (e.currentTarget as HTMLDivElement).style.opacity = '1'; (e.currentTarget as HTMLDivElement).style.pointerEvents = 'auto' } }}
-          onMouseLeave={e => { if (mode === 'view') { (e.currentTarget as HTMLDivElement).style.opacity = '0.25'; (e.currentTarget as HTMLDivElement).style.pointerEvents = 'none' } }}>
-          <Toolbar
-            mode={mode} theme={theme} isOnline={isOnline}
-            onModeToggle={() => setMode(m => m === 'edit' ? 'view' : 'edit')}
-            onAddWidget={handleAddWidget}
-            onAddDrawing={() => setShowDrawingCanvas(true)}
-            onThemeChange={(n: ThemeName) => changeTheme(n)}
-            onTriggerPetals={() => !isPetalActive && setIsPetalActive(true)}
-            onTriggerWhispers={() => !isWhisperActive && setIsWhisperActive(true)}
-            onLogout={logout}
-          />
-        </motion.div>
+      {/* 工具列（編輯模式完整顯示） */}
+      {!showDrawingCanvas && mode === 'edit' && (
+        <Toolbar
+          mode={mode} theme={theme} isOnline={isOnline}
+          onModeToggle={() => setMode('view')}
+          onAddWidget={handleAddWidget}
+          onAddDrawing={() => setShowDrawingCanvas(true)}
+          onThemeChange={(n: ThemeName) => changeTheme(n)}
+          onTriggerPetals={() => !isPetalActive && setIsPetalActive(true)}
+          onTriggerWhispers={() => !isWhisperActive && setIsWhisperActive(true)}
+          onLogout={logout}
+          onDeleteRoom={() => setShowDeleteConfirm(true)}
+        />
+      )}
+
+      {/* 瀏覽模式：固定的「返回編輯」按鈕（手機/桌面都能點） */}
+      {!showDrawingCanvas && mode === 'view' && (
+        <motion.button
+          className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-sm"
+          style={{
+            zIndex: 100,
+            background: 'rgba(0,0,0,0.5)',
+            border: `1px solid ${theme.glassBorder}`,
+            color: theme.textSecondary,
+            backdropFilter: 'blur(20px)',
+          }}
+          initial={{ y: -40, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setMode('edit')}
+        >
+          ✏️ 點此返回編輯
+        </motion.button>
       )}
 
       {/* 分頁 Tabs */}
@@ -153,6 +189,19 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 刪除房間確認 */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        theme={theme}
+        title="刪除整個空間？"
+        message={`確定要永久刪除「${spaceId}」這個空間嗎？\n所有照片、影片、手繪、文字都將一併刪除，且無法復原。`}
+        confirmLabel={isDeleting ? '刪除中…' : '確認刪除'}
+        cancelLabel="取消"
+        danger
+        onConfirm={handleDeleteRoom}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

@@ -61,8 +61,13 @@ export function BaseWidget({
           })
         }
       }}
-      // 點擊選取（未拖動才觸發）
-      onPointerUp={() => {
+      // 點擊選取（未拖動才觸發，且事件來源必須是 widget 本身）
+      onPointerUp={(e) => {
+        // 如果點擊來源不是這個 div 本身（是子元素冒泡上來），忽略
+        if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, textarea, select')) {
+          didDrag.current = false
+          return
+        }
         if (!didDrag.current && isEditMode) {
           isSelected ? onDeselect() : onSelect()
         }

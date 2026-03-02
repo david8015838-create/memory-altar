@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Palette, Flower2, Sparkles, Video, Pen, LogOut } from 'lucide-react'
+import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Palette, Flower2, Sparkles, Video, Pen, LogOut, Trash2 } from 'lucide-react'
 import type { AppMode, Theme, ThemeName, WidgetType } from '../../types'
 import { THEMES } from '../../constants/themes'
 
@@ -8,11 +8,12 @@ interface Props {
   mode: AppMode; theme: Theme; isOnline: boolean
   onModeToggle: () => void
   onAddWidget: (type: WidgetType) => void
-  onAddDrawing: () => void  // 開啟手繪 modal
+  onAddDrawing: () => void
   onThemeChange: (n: ThemeName) => void
   onTriggerPetals: () => void
   onTriggerWhispers: () => void
   onLogout: () => void
+  onDeleteRoom: () => void  // 刪除整個房間
 }
 
 const WIDGET_BUTTONS: { type: WidgetType | 'draw'; icon: React.ReactNode; label: string }[] = [
@@ -24,7 +25,7 @@ const WIDGET_BUTTONS: { type: WidgetType | 'draw'; icon: React.ReactNode; label:
   { type: 'draw',    icon: <Pen    size={15} />, label: '手繪' },
 ]
 
-export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAddDrawing, onThemeChange, onTriggerPetals, onTriggerWhispers, onLogout }: Props) {
+export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAddDrawing, onThemeChange, onTriggerPetals, onTriggerWhispers, onLogout, onDeleteRoom }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [showTheme, setShowTheme] = useState(false)
   const isEditMode = mode === 'edit'
@@ -110,6 +111,12 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
         <div title={isOnline ? '已連線' : '離線模式'} style={{ color: isOnline ? '#4ade80' : '#94a3b8' }}>
           {isOnline ? <Wifi size={13} /> : <WifiOff size={13} />}
         </div>
+
+        {/* 刪除房間 */}
+        <motion.button className="p-1.5 rounded-xl" style={{ color: '#f87171' }}
+          whileTap={{ scale: 0.95 }} onClick={onDeleteRoom} title="刪除整個房間">
+          <Trash2 size={13} />
+        </motion.button>
 
         {/* 登出 */}
         <motion.button className="p-1.5 rounded-xl" style={{ color: 'var(--text-secondary)' }}
