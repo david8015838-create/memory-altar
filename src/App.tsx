@@ -65,7 +65,7 @@ export default function App() {
     // 等下一個 tick 讓 widget 先建立，再更新 imageUrl
     setTimeout(() => {
       // 找到剛建立的 widget 更新 content
-      updateWidget(widgetId as string, { content: { imageUrl, caption: '' } })
+      updateWidget(widgetId as string, { content: { imageUrl, caption: '', showBorder: true } })
     }, 100)
     setShowDrawingCanvas(false)
   }

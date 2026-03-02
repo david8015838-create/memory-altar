@@ -136,10 +136,10 @@ export function useWidgets(spaceId: string, currentPageId: string) {
 function getDefaultContent(type: WidgetType): PhotoContent | StickerContent | TimerContent | WeatherContent | VideoContent | DrawingContent {
   switch (type) {
     case 'photo':    return { imageUrl: null, caption: '', style: 'polaroid' } as PhotoContent
-    case 'sticker':  return { text: '雙擊編輯 ✍️', fontSize: 18, color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.12)' } as StickerContent
+    case 'sticker':  return { text: '點選後編輯 ✍️', fontSize: 18, color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.12)', showBorder: true } as StickerContent
     case 'timer':    return { title: '在一起', startDate: new Date().toISOString().split('T')[0], emoji: '💕' } as TimerContent
     case 'weather':  return { mood: 'sunny', label: '今天好幸福', date: new Date().toISOString() } as WeatherContent
     case 'video':    return { videoUrl: null, caption: '' } as VideoContent
-    case 'drawing':  return { imageUrl: null, caption: '' } as DrawingContent
+    case 'drawing':  return { imageUrl: null, caption: '', showBorder: true } as DrawingContent
   }
 }

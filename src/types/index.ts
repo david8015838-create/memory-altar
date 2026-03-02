@@ -24,6 +24,7 @@ export interface StickerContent {
   fontSize: number
   color: string
   backgroundColor: string
+  showBorder: boolean   // 是否顯示玻璃外框
 }
 
 /** 紀念日計時器 */
@@ -51,6 +52,7 @@ export interface VideoContent {
 export interface DrawingContent {
   imageUrl: string | null  // 繪圖存成 PNG 的 URL
   caption: string
+  showBorder: boolean   // 是否顯示背景外框
 }
 
 export type WidgetContent =

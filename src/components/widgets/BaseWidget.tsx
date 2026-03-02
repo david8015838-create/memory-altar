@@ -45,6 +45,8 @@ export function BaseWidget({
         cursor: isEditMode ? (isDragging ? 'grabbing' : 'grab') : 'default',
         touchAction: isEditMode ? 'none' : 'auto',
       }}
+      // 阻止 mousedown 冒泡到 InfiniteCanvas 的 handleMouseDown（否則每次點擊 widget 都會觸發 setSelectedId(null)）
+      onMouseDown={(e) => { if (isEditMode) e.stopPropagation() }}
       onDragStart={() => {
         setIsDragging(true)
         didDrag.current = false
