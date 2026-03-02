@@ -1,0 +1,87 @@
+/* ============================================================
+   全域樣式 - Memory Altar
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500;700&family=Noto+Sans+TC:wght@300;400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS 自訂屬性（由 useTheme 動態更新） */
+:root {
+  --accent: #a78bfa;
+  --text-primary: #f3f0ff;
+  --text-secondary: #c4b5fd;
+  --glass-border: rgba(139, 92, 246, 0.3);
+  --glass-bg: rgba(15, 10, 40, 0.6);
+}
+
+/* 全域重置 */
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Noto Sans TC', system-ui, sans-serif;
+  color: var(--text-primary);
+  background: #0d0620;
+  /* 防止 iOS 彈跳捲動 */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: none;
+}
+
+/* 捲軸樣式 */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 2px;
+}
+
+/* 選取文字顏色 */
+::selection {
+  background: var(--accent);
+  color: white;
+}
+
+/* 手寫字體輔助 class */
+.font-handwriting {
+  font-family: 'Noto Serif TC', Georgia, serif;
+}
+
+/* 玻璃擬態基礎 class */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* 防止拖動時選取文字 */
+.drag-none {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 平滑過渡 */
+.smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
