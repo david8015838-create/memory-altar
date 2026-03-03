@@ -11,7 +11,8 @@ import { StickerWidget } from '../widgets/StickerWidget'
 import { TimerWidget }   from '../widgets/TimerWidget'
 import { WeatherWidget } from '../widgets/WeatherWidget'
 import { VideoWidget }   from '../widgets/VideoWidget'
-import { DrawingWidget } from '../widgets/DrawingWidget'
+import { DrawingWidget }   from '../widgets/DrawingWidget'
+import { LoveNoteWidget } from '../widgets/LoveNoteWidget'
 import { WidgetActionBar } from '../ui/WidgetActionBar'
 
 interface Transform { viewX: number; viewY: number; scale: number }
@@ -261,7 +262,8 @@ export function InfiniteCanvas({
                 case 'timer':   return <TimerWidget   key={w.id} {...p} />
                 case 'weather': return <WeatherWidget key={w.id} {...p} />
                 case 'video':   return <VideoWidget   key={w.id} {...p} />
-                case 'drawing': return <DrawingWidget key={w.id} {...p} />
+                case 'drawing':    return <DrawingWidget  key={w.id} {...p} />
+                case 'love-note': return <LoveNoteWidget key={w.id} {...p} />
                 default:        return null
               }
             })}

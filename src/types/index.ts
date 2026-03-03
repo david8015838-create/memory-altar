@@ -2,7 +2,7 @@
 // 數位回憶祭壇 v2 - 核心型別定義
 // ============================================================
 
-export type WidgetType = 'photo' | 'sticker' | 'timer' | 'weather' | 'video' | 'drawing'
+export type WidgetType = 'photo' | 'sticker' | 'timer' | 'weather' | 'video' | 'drawing' | 'love-note'
 export type ThemeName =
   | 'midnight' | 'sunset' | 'forest'
   | 'sakura' | 'ocean' | 'rose' | 'aurora'
@@ -58,9 +58,15 @@ export interface DrawingContent {
   showBorder: boolean   // 是否顯示背景外框
 }
 
+/** 情書 Widget */
+export interface LoveNoteContent {
+  message: string   // 信件內容
+  from: string      // 寄件人名字
+}
+
 export type WidgetContent =
   | PhotoContent | StickerContent | TimerContent
-  | WeatherContent | VideoContent | DrawingContent
+  | WeatherContent | VideoContent | DrawingContent | LoveNoteContent
 
 /** Widget 通用資料 */
 export interface Widget {

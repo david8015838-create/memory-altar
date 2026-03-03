@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import type { Widget, WidgetType, PhotoContent, StickerContent, TimerContent, WeatherContent, VideoContent, DrawingContent } from '../types'
+import type { Widget, WidgetType, PhotoContent, StickerContent, TimerContent, WeatherContent, VideoContent, DrawingContent, LoveNoteContent } from '../types'
 import { WIDGET_DEFAULTS } from '../constants/themes'
 import { supabase, isSupabaseConfigured, loadWidgets, saveWidget, deleteWidget as dbDelete, dataUrlToStorage } from '../lib/supabase'
 
@@ -241,13 +241,14 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   return { widgets, isLoading, isOnline, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront, syncToCloud, undo, redo }
 }
 
-function getDefaultContent(type: WidgetType): PhotoContent | StickerContent | TimerContent | WeatherContent | VideoContent | DrawingContent {
+function getDefaultContent(type: WidgetType): PhotoContent | StickerContent | TimerContent | WeatherContent | VideoContent | DrawingContent | LoveNoteContent {
   switch (type) {
     case 'photo':    return { imageUrl: null, caption: '', style: 'polaroid' } as PhotoContent
     case 'sticker':  return { text: '點選後編輯 ✍️', fontSize: 18, color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.12)', showBorder: true } as StickerContent
     case 'timer':    return { title: '在一起', startDate: new Date().toISOString().split('T')[0], emoji: '💕' } as TimerContent
     case 'weather':  return { mood: 'sunny', label: '今天好幸福', date: new Date().toISOString() } as WeatherContent
     case 'video':    return { videoUrl: null, caption: '' } as VideoContent
-    case 'drawing':  return { imageUrl: null, caption: '', showBorder: true } as DrawingContent
+    case 'drawing':    return { imageUrl: null, caption: '', showBorder: true } as DrawingContent
+    case 'love-note':  return { message: '', from: '' } as LoveNoteContent
   }
 }

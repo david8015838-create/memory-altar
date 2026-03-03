@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Video, Pen, LogOut, Trash2, Sparkles, X, CloudUpload, MoreHorizontal, Locate } from 'lucide-react'
+import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Video, Pen, LogOut, Trash2, Sparkles, X, CloudUpload, MoreHorizontal, Locate, Mail } from 'lucide-react'
 import type { AppMode, Theme, ThemeName, WidgetType } from '../../types'
 import { THEMES } from '../../constants/themes'
 
@@ -26,12 +26,13 @@ interface Props {
 }
 
 const WIDGET_BUTTONS: { type: WidgetType | 'draw'; icon: React.ReactNode; label: string }[] = [
-  { type: 'photo',   icon: <Camera size={15} />, label: '照片' },
-  { type: 'video',   icon: <Video  size={15} />, label: '影片' },
-  { type: 'sticker', icon: <Type   size={15} />, label: '文字' },
-  { type: 'timer',   icon: <Timer  size={15} />, label: '計時器' },
-  { type: 'weather', icon: <Cloud  size={15} />, label: '心情' },
-  { type: 'draw',    icon: <Pen    size={15} />, label: '手繪' },
+  { type: 'photo',     icon: <Camera size={15} />, label: '照片' },
+  { type: 'video',     icon: <Video  size={15} />, label: '影片' },
+  { type: 'sticker',   icon: <Type   size={15} />, label: '文字' },
+  { type: 'timer',     icon: <Timer  size={15} />, label: '計時器' },
+  { type: 'weather',   icon: <Cloud  size={15} />, label: '心情' },
+  { type: 'draw',      icon: <Pen    size={15} />, label: '手繪' },
+  { type: 'love-note', icon: <Mail   size={15} />, label: '情書' },
 ]
 
 const EFFECTS_CONFIG = [

@@ -205,5 +205,6 @@ export const WIDGET_DEFAULTS: Record<string, { width: number; height: number }> 
   timer:    { width: 240, height: 180 },
   weather:  { width: 180, height: 160 },
   video:    { width: 280, height: 220 },
-  drawing:  { width: 240, height: 240 },
+  drawing:    { width: 240, height: 240 },
+  'love-note': { width: 260, height: 200 },
 }
