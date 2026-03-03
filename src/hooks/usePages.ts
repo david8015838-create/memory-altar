@@ -98,5 +98,20 @@ export function usePages(spaceId: string) {
     })
   }, [pages, currentPageId, spaceId])
 
-  return { pages, currentPageId, setCurrentPageId, isLoading, addPage, renamePage, removePage }
+  const reorderPages = useCallback(async (fromId: string, toId: string) => {
+    const fromIdx = pages.findIndex(p => p.id === fromId)
+    const toIdx   = pages.findIndex(p => p.id === toId)
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return
+    const newPages = [...pages]
+    const [moved] = newPages.splice(fromIdx, 1)
+    newPages.splice(toIdx, 0, moved)
+    const updated = newPages.map((p, i) => ({ ...p, page_order: i }))
+    setPages(updated)
+    saveLocal(spaceId, updated)
+    if (isSupabaseConfigured) {
+      await Promise.all(updated.map(p => updatePage(p.id, { page_order: p.page_order })))
+    }
+  }, [pages, spaceId])
+
+  return { pages, currentPageId, setCurrentPageId, isLoading, addPage, renamePage, removePage, reorderPages }
 }

@@ -74,6 +74,7 @@ export interface Widget {
   width: number
   height: number
   zIndex: number
+  locked?: boolean
   content: WidgetContent
   created_at: string
   updated_at: string

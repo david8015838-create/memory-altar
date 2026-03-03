@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Video, Pen, LogOut, Trash2, Sparkles, X } from 'lucide-react'
+import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Video, Pen, LogOut, Trash2, Sparkles, X, CloudUpload, MoreHorizontal, Locate } from 'lucide-react'
 import type { AppMode, Theme, ThemeName, WidgetType } from '../../types'
 import { THEMES } from '../../constants/themes'
 
@@ -20,6 +20,8 @@ interface Props {
   onThemeChange: (n: ThemeName) => void
   onLogout: () => void
   onDeleteRoom: () => void
+  onSync: () => Promise<{ synced: number; failed: number }>
+  onResetView: () => void  // C2
   effects: EffectsState
 }
 
@@ -40,27 +42,62 @@ const EFFECTS_CONFIG = [
   { key: 'firefly' as const, emoji: '🌟', label: '螢火蟲' },
 ]
 
-export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAddDrawing, onThemeChange, onLogout, onDeleteRoom, effects }: Props) {
+export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAddDrawing, onThemeChange, onLogout, onDeleteRoom, onSync, onResetView, effects }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [showTheme, setShowTheme] = useState(false)
   const [showEffects, setShowEffects] = useState(false)
+  const [showMore, setShowMore] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const isEditMode = mode === 'edit'
 
   const anyEffectActive = Object.values(effects).some(e => e.active)
-  const closeAll = () => { setShowAdd(false); setShowTheme(false); setShowEffects(false) }
+  const anyOpen = showAdd || showTheme || showMore || showEffects
+  const closeAll = () => { setShowAdd(false); setShowTheme(false); setShowEffects(false); setShowMore(false) }
+
+  // A1: close menus on Escape key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeAll() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  const handleSync = async () => {
+    if (syncing) return
+    closeAll()
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      const { synced, failed } = await onSync()
+      setSyncMsg(failed > 0 ? `⚠ ${failed} 失敗` : synced > 0 ? `✓ ${synced} 個已上雲` : '✓ 已同步')
+    } catch { setSyncMsg('✗ 同步失敗') }
+    finally {
+      setSyncing(false)
+      setTimeout(() => setSyncMsg(null), 3500)
+    }
+  }
 
   return (
     <>
+      {/* A1: transparent overlay to close menus on outside click */}
+      {anyOpen && (
+        <div
+          className="fixed inset-0"
+          style={{ zIndex: 99 }}
+          onClick={closeAll}
+        />
+      )}
+
       {/* 主工具列 */}
       <motion.div
-        className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-2 rounded-2xl"
+        className="fixed left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-2 rounded-2xl"
         style={{
           zIndex: 100,
+          top: 'max(1rem, env(safe-area-inset-top))',
           background: 'var(--glass-bg)',
           border: '1px solid var(--glass-border)',
           backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-          // 手機防溢出
           maxWidth: 'calc(100vw - 16px)',
         }}
         initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
@@ -143,26 +180,88 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
           </AnimatePresence>
         </div>
 
+        {/* 雲端同步按鈕（編輯模式，已連線才顯示） */}
+        {isEditMode && isOnline && (
+          <motion.button
+            className="relative flex items-center gap-1 p-1.5 rounded-xl"
+            style={{ color: syncMsg?.startsWith('✓') ? '#4ade80' : syncMsg?.startsWith('⚠') ? '#fb923c' : 'var(--text-secondary)' }}
+            whileTap={{ scale: 0.95 }}
+            title="同步到雲端（讓其他裝置也能看到）"
+            onClick={handleSync}
+            disabled={syncing}
+          >
+            {syncing
+              ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}><CloudUpload size={13} /></motion.div>
+              : <CloudUpload size={13} />
+            }
+            {/* 結果提示（短暫顯示） */}
+            {syncMsg && (
+              <motion.span
+                className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(0,0,0,0.85)', color: syncMsg.startsWith('✓') ? '#4ade80' : '#fb923c', border: '1px solid rgba(255,255,255,0.1)' }}
+                initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+              >{syncMsg}</motion.span>
+            )}
+          </motion.button>
+        )}
+
+        {/* C2: 回到中心按鈕 */}
+        <motion.button
+          className="p-1.5 rounded-xl"
+          style={{ color: 'var(--text-secondary)' }}
+          whileTap={{ scale: 0.95 }}
+          title="回到所有貼紙的位置"
+          onClick={() => { onResetView(); closeAll() }}
+        >
+          <Locate size={13} />
+        </motion.button>
+
         {/* 連線狀態 */}
         <div title={isOnline ? '已連線' : '離線模式'} style={{ color: isOnline ? '#4ade80' : '#94a3b8' }}>
           {isOnline ? <Wifi size={13} /> : <WifiOff size={13} />}
         </div>
 
-        {/* 刪除房間 */}
-        <motion.button className="p-1.5 rounded-xl" style={{ color: '#f87171' }}
+        {/* 桌面：直接顯示刪除 + 離開 */}
+        <motion.button className="hidden sm:flex p-1.5 rounded-xl" style={{ color: '#f87171' }}
           whileTap={{ scale: 0.95 }} onClick={onDeleteRoom} title="刪除整個房間">
           <Trash2 size={13} />
         </motion.button>
-
-        {/* 登出 */}
-        <motion.button className="p-1.5 rounded-xl" style={{ color: 'var(--text-secondary)' }}
+        <motion.button className="hidden sm:flex p-1.5 rounded-xl" style={{ color: 'var(--text-secondary)' }}
           whileTap={{ scale: 0.95 }} onClick={onLogout} title="離開空間">
           <LogOut size={13} />
         </motion.button>
+
+        {/* 手機：⋮ 收合選單 */}
+        <div className="relative sm:hidden">
+          <motion.button className="p-1.5 rounded-xl" style={{ color: 'var(--text-secondary)' }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setShowMore(v => !v); setShowAdd(false); setShowTheme(false) }}>
+            <MoreHorizontal size={15} />
+          </motion.button>
+          <AnimatePresence>
+            {showMore && (
+              <motion.div
+                className="absolute top-10 right-0 p-1.5 rounded-2xl flex flex-col gap-1 min-w-[120px]"
+                style={{ background: 'rgba(8,6,24,0.97)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(20px)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 200 }}
+                initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }}>
+                <button className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm"
+                  style={{ color: '#f87171' }}
+                  onClick={() => { closeAll(); onDeleteRoom() }}>
+                  <Trash2 size={14} /> 刪除房間
+                </button>
+                <button className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm"
+                  style={{ color: 'var(--text-secondary)' }}
+                  onClick={() => { closeAll(); onLogout() }}>
+                  <LogOut size={14} /> 離開空間
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </motion.div>
 
       {/* 特效浮動面板（右下角，任何模式都可用） */}
-      <div className="fixed right-4 flex flex-col items-end" style={{ bottom: 80, zIndex: 100 }}>
+      <div className="fixed right-4 flex flex-col items-end" style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))', zIndex: 100 }}>
 
         {/* 展開的特效列表 */}
         <AnimatePresence>

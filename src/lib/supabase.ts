@@ -100,6 +100,26 @@ export async function deleteSpace(spaceId: string): Promise<boolean> {
   return true
 }
 
+/** base64 data URL → Supabase Storage URL（用於跨裝置同步：本地 base64 → 雲端永久連結） */
+export async function dataUrlToStorage(
+  dataUrl: string,
+  spaceId: string,
+  folder: 'photos' | 'videos' | 'drawings',
+): Promise<string | null> {
+  if (!supabase) return null
+  try {
+    const [header, b64] = dataUrl.split(',')
+    const mime = header.replace('data:', '').replace(';base64', '').trim()
+    const binary = atob(b64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    const blob = new Blob([bytes], { type: mime })
+    const ext = mime.split('/')[1]?.split('+')[0] || 'bin'
+    const filename = `sync_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+    return uploadFile(blob, spaceId, folder, filename)
+  } catch { return null }
+}
+
 /** Keepalive ping（防止 Supabase 免費版閒置停機） */
 export async function ping(spaceId: string): Promise<void> {
   if (!supabase) return
@@ -118,13 +138,30 @@ export async function uploadFile(
   const ext = file instanceof File
     ? (file.name.split('.').pop() || 'bin')
     : (folder === 'drawings' ? 'png' : 'bin')
-  const name = filename || `${Date.now()}.${ext}`
+  const name = filename || `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
   const path = `${spaceId}/${folder}/${name}`
 
+  // 使用真實 MIME type，讓瀏覽器能正確識別並播放影片
+  // bucket policy 已設定允許所有類型，不再需要 octet-stream workaround
+  const contentType = file instanceof File
+    ? (file.type || 'application/octet-stream')
+    : (folder === 'drawings' ? 'image/png' : 'application/octet-stream')
+
   const { data, error } = await supabase.storage.from('photos').upload(path, file, {
-    cacheControl: '3600', upsert: false
+    cacheControl: '3600', upsert: true, contentType,
   })
-  if (error) { console.error('upload:', error); return null }
+  if (error) {
+    // 如果 MIME 被拒絕，退而用 octet-stream 重試一次
+    if (error.message?.includes('mime') || error.message?.includes('type') || (error.statusCode as unknown as number) === 415) {
+      const { data: d2, error: e2 } = await supabase.storage.from('photos').upload(path, file, {
+        cacheControl: '3600', upsert: true, contentType: 'application/octet-stream',
+      })
+      if (e2) { console.error('upload retry failed:', e2); return null }
+      return supabase.storage.from('photos').getPublicUrl(d2.path).data.publicUrl
+    }
+    console.error('upload:', error, 'path:', path, 'type:', contentType)
+    return null
+  }
 
   return supabase.storage.from('photos').getPublicUrl(data.path).data.publicUrl
 }

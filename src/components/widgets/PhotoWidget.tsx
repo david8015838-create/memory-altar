@@ -25,7 +25,7 @@ const STYLE_LABELS: Record<PhotoStyle, string> = {
   polaroid: '拍立得', square: '方框', round: '圓形', film: '底片'
 }
 
-export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate,  onBringToFront }: Props) {
+export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
   const content = widget.content as PhotoContent
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)

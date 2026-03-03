@@ -17,18 +17,27 @@ export function useAuth() {
   const [error, setError] = useState<string>('')
   const [isCreatingNew, setIsCreatingNew] = useState(false)
 
-  // 啟動時嘗試從 localStorage 還原 session
+  // 啟動時嘗試從 localStorage 還原 session，並向 Supabase 驗證空間仍存在
   useEffect(() => {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (raw) {
-      try {
-        const session: Session = JSON.parse(raw)
-        setSpaceId(session.spaceId)
-        setStatus('authenticated')
-        return
-      } catch { /* ignore */ }
+    async function restore() {
+      const raw = localStorage.getItem(SESSION_KEY)
+      if (raw) {
+        try {
+          const session: Session = JSON.parse(raw)
+          // 向後端確認空間仍存在且密碼一致（防止空間已刪除的舊 session）
+          const space = await getSpace(session.spaceId)
+          if (space && space.password_hash === session.passwordHash) {
+            setSpaceId(session.spaceId)
+            setStatus('authenticated')
+            return
+          }
+          // 空間不存在或密碼不符 → 清除舊 session
+          localStorage.removeItem(SESSION_KEY)
+        } catch { /* ignore parse errors */ }
+      }
+      setStatus('unauthenticated')
     }
-    setStatus('unauthenticated')
+    restore()
   }, [])
 
   /** 登入現有空間 */

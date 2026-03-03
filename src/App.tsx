@@ -28,9 +28,9 @@ export default function App() {
   const { status, spaceId, error, isCreatingNew, setIsCreatingNew, login, register, logout } = useAuth()
 
   const { pages, currentPageId, setCurrentPageId, addPage, renamePage, removePage } = usePages(spaceId)
-  const { widgets, isLoading, isOnline, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront } = useWidgets(spaceId, currentPageId)
+  const { widgets, isLoading, isOnline, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront, syncToCloud, undo, redo } = useWidgets(spaceId, currentPageId)
 
-  const [mode, setMode] = useState<AppMode>('edit')
+  const [mode, setMode] = useState<AppMode>('view')
   const [showDrawingCanvas, setShowDrawingCanvas] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -43,6 +43,7 @@ export default function App() {
   const [isFireflyActive, setIsFireflyActive] = useState(false)
 
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const resetViewRef = useRef<(() => void) | null>(null) // C2
 
   // ── Keepalive：每 4 分鐘 ping 一次
   useEffect(() => {
@@ -50,6 +51,19 @@ export default function App() {
     const id = setInterval(() => ping(spaceId), 4 * 60 * 1000)
     return () => clearInterval(id)
   }, [spaceId])
+
+  // ── C1: 鍵盤快捷鍵 Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y / Ctrl+Shift+Z = redo
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+      else if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [undo, redo])
 
   // ── 刪除整個房間
   const handleDeleteRoom = async () => {
@@ -118,6 +132,7 @@ export default function App() {
           onDuplicateWidget={duplicateWidget}
           onBringToFront={bringToFront}
           onCanvasRef={r => { canvasRef.current = r }}
+          onRegisterReset={fn => { resetViewRef.current = fn }}
         />
       )}
 
@@ -131,6 +146,8 @@ export default function App() {
           onThemeChange={(n: ThemeName) => changeTheme(n)}
           onLogout={logout}
           onDeleteRoom={() => setShowDeleteConfirm(true)}
+          onSync={syncToCloud}
+          onResetView={() => resetViewRef.current?.()}
           effects={{
             petal:   { active: isPetalActive,   onToggle: () => setIsPetalActive(v => !v) },
             whisper: { active: isWhisperActive, onToggle: () => setIsWhisperActive(v => !v) },
@@ -144,9 +161,10 @@ export default function App() {
       {/* 瀏覽模式：固定的「返回編輯」按鈕 */}
       {!showDrawingCanvas && mode === 'view' && (
         <motion.button
-          className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-sm"
+          className="fixed left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-sm"
           style={{
             zIndex: 100,
+            top: 'max(1rem, env(safe-area-inset-top))',
             background: 'rgba(0,0,0,0.5)',
             border: `1px solid ${theme.glassBorder}`,
             color: theme.textSecondary,
@@ -187,6 +205,24 @@ export default function App() {
       <StarShower  isActive={isStarActive} />
       <SnowFall    isActive={isSnowActive} />
       <Fireflies   isActive={isFireflyActive} />
+
+      {/* B2: loading indicator while widgets are being fetched */}
+      <AnimatePresence>
+        {isLoading && !showDrawingCanvas && (
+          <motion.div
+            className="fixed inset-0 flex items-center justify-center pointer-events-none"
+            style={{ zIndex: 5 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-8 h-8 rounded-full border-2"
+              style={{ borderColor: `${theme.accent}40`, borderTopColor: theme.accent }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 空畫布提示 */}
       <AnimatePresence>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Widget, WeatherContent, WeatherMood } from '../../types'
 import { WEATHER_MOODS } from '../../constants/themes'
@@ -16,6 +16,9 @@ export function WeatherWidget({ widget, isEditMode, isSelected, onSelect, onDese
   const [showPicker, setShowPicker] = useState(false)
   const [editingLabel, setEditingLabel] = useState(false)
   const mood = WEATHER_MOODS[content.mood]
+
+  // A2: close picker when leaving edit mode
+  useEffect(() => { if (!isEditMode) setShowPicker(false) }, [isEditMode])
 
   const block = (e: React.SyntheticEvent) => e.stopPropagation()
 

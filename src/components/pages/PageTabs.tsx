@@ -23,6 +23,7 @@ export function PageTabs({ pages, currentPageId, mode, theme, onSelect, onAdd, o
   const [newPageName, setNewPageName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null) // B1
 
   const handleAdd = () => {
     const name = newPageName.trim() || `頁面 ${pages.length + 1}`
@@ -91,15 +92,32 @@ export function PageTabs({ pages, currentPageId, mode, theme, onSelect, onAdd, o
                 }
               }}
             >
-              {page.name}
-              {/* 刪除按鈕（編輯模式 + 選中頁 + 不是最後一頁） */}
-              {mode === 'edit' && currentPageId === page.id && pages.length > 1 && (
-                <span
-                  className="ml-1 opacity-60 hover:opacity-100"
-                  onClick={e => { e.stopPropagation(); onDelete(page.id) }}
-                >
-                  <X size={10} />
+              {/* B1: inline delete confirmation */}
+              {confirmDeleteId === page.id ? (
+                <span className="ml-1 flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+                  <button
+                    className="px-1 rounded text-[9px] font-bold"
+                    style={{ background: '#f87171', color: '#fff' }}
+                    onClick={e => { e.stopPropagation(); onDelete(page.id); setConfirmDeleteId(null) }}
+                  >確定</button>
+                  <button
+                    className="px-1 rounded text-[9px]"
+                    style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)' }}
+                    onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                  >取消</button>
                 </span>
+              ) : (
+                <>
+                  {page.name}
+                  {mode === 'edit' && currentPageId === page.id && pages.length > 1 && (
+                    <span
+                      className="ml-1 opacity-60 hover:opacity-100"
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteId(page.id) }}
+                    >
+                      <X size={10} />
+                    </span>
+                  )}
+                </>
               )}
             </button>
           )}

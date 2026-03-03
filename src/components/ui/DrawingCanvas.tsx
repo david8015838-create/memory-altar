@@ -27,9 +27,10 @@ export function DrawingCanvas({ theme, spaceId, onSave, onClose }: Props) {
   const [isDrawing, setIsDrawing] = useState(false)
   const [history, setHistory] = useState<ImageData[]>([])
   const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<string | null>(null) // B3
   const lastPos = useRef<{ x: number; y: number } | null>(null)
 
-  // 初始化黑色背景
+  // 初始化黑色背景 + A6: save initial blank state to history
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
@@ -38,6 +39,8 @@ export function DrawingCanvas({ theme, spaceId, onSave, onClose }: Props) {
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
     ctx.fillStyle = '#1a1a2e'
     ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
+    // A6: store blank canvas as initial undo state
+    setHistory([ctx.getImageData(0, 0, canvas.width, canvas.height)])
   }, [])
 
   const getPos = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number } => {
@@ -107,13 +110,17 @@ export function DrawingCanvas({ theme, spaceId, onSave, onClose }: Props) {
     setSaving(true)
     const canvas = canvasRef.current!
     const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), 'image/png'))
-    let url: string | null = null
-    url = await uploadFile(blob, spaceId, 'drawings')
-    if (!url) {
-      // fallback: data URL
-      url = canvas.toDataURL('image/png')
+    const uploaded = await uploadFile(blob, spaceId, 'drawings')
+    if (uploaded) {
+      // B3: notify user — saved to cloud
+      setSaveStatus('已存到雲端 ☁️')
+      setTimeout(() => { setSaveStatus(null); onSave(uploaded) }, 1200)
+    } else {
+      // B3: fallback to data URL, warn user
+      const dataUrl = canvas.toDataURL('image/png')
+      setSaveStatus('已儲存（僅本裝置，可按同步上雲）')
+      setTimeout(() => { setSaveStatus(null); onSave(dataUrl) }, 1800)
     }
-    onSave(url)
     setSaving(false)
   }
 
@@ -196,6 +203,17 @@ export function DrawingCanvas({ theme, spaceId, onSave, onClose }: Props) {
         {isEraser ? <Eraser size={12} /> : <Pen size={12} />}
         <span>{isEraser ? '橡皮擦' : '畫筆'} · 粗細 {size}px</span>
       </div>
+
+      {/* B3: save status toast */}
+      {saveStatus && (
+        <motion.div
+          className="absolute top-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm"
+          style={{ background: 'rgba(0,0,0,0.85)', color: saveStatus.startsWith('已存到雲端') ? '#4ade80' : '#fbbf24', border: '1px solid rgba(255,255,255,0.15)', zIndex: 10 }}
+          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+        >
+          {saveStatus}
+        </motion.div>
+      )}
     </motion.div>
   )
 }

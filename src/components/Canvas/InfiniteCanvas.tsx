@@ -2,7 +2,7 @@
 // InfiniteCanvas v4 - 正確 pinch-to-zoom（繞捏合中心縮放）
 // ============================================================
 
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import type { Widget, AppMode, Theme } from '../../types'
 import { CanvasScaleContext } from '../../contexts/CanvasContext'
 import { GridOverlay } from './GridOverlay'
@@ -22,6 +22,7 @@ interface Props {
   onDuplicateWidget: (id: string) => void
   onBringToFront: (id: string) => void
   onCanvasRef: (ref: HTMLDivElement | null) => void
+  onRegisterReset?: (fn: () => void) => void  // C2
 }
 
 const SCALE_MIN = 0.25
@@ -29,7 +30,7 @@ const SCALE_MAX = 3
 
 export function InfiniteCanvas({
   widgets, mode, theme,
-  onUpdateWidget, onDeleteWidget, onDuplicateWidget, onBringToFront, onCanvasRef,
+  onUpdateWidget, onDeleteWidget, onDuplicateWidget, onBringToFront, onCanvasRef, onRegisterReset,
 }: Props) {
   // ── Transform state ──────────────────────────────────────
   // viewX/viewY = 畫布左上角 (0,0) 在螢幕座標的位置
@@ -54,6 +55,52 @@ export function InfiniteCanvas({
 
   const selectedWidget = widgets.find(w => w.id === selectedId) || null
   const isEditMode     = mode === 'edit'
+
+  // C2: reset viewport — fit all widgets or go to canvas center
+  useEffect(() => {
+    if (!onRegisterReset) return
+    onRegisterReset(() => {
+      if (widgets.length === 0) {
+        const fresh: Transform = { viewX: window.innerWidth / 2 - 2000, viewY: window.innerHeight / 2 - 2000, scale: 1 }
+        tRef.current = fresh; setT(fresh); return
+      }
+      const xs = widgets.map(w => w.x), ys = widgets.map(w => w.y)
+      const ws = widgets.map(w => w.x + w.width), hs = widgets.map(w => w.y + w.height)
+      const minX = Math.min(...xs), minY = Math.min(...ys)
+      const maxX = Math.max(...ws), maxY = Math.max(...hs)
+      const padX = 80, padY = 120
+      const scaleX = (window.innerWidth  - padX * 2) / (maxX - minX)
+      const scaleY = (window.innerHeight - padY * 2) / (maxY - minY)
+      const scale  = Math.min(Math.max(Math.min(scaleX, scaleY), SCALE_MIN), 1)
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+      const fresh: Transform = {
+        viewX: window.innerWidth  / 2 - cx * scale,
+        viewY: window.innerHeight / 2 - cy * scale,
+        scale,
+      }
+      tRef.current = fresh; setT(fresh)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onRegisterReset, widgets])
+
+  // C1: keyboard shortcuts — Delete/Backspace to delete, Escape to deselect
+  useEffect(() => {
+    if (!isEditMode) return
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable) return
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        e.preventDefault()
+        onDeleteWidget(selectedId)
+        setSelectedId(null)
+      }
+      if (e.key === 'Escape' && selectedId) {
+        setSelectedId(null)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isEditMode, selectedId, onDeleteWidget])
 
   // ── Helpers ───────────────────────────────────────────────
   /** 繞螢幕點 (ox, oy) 縮放 ratio 倍 */
@@ -231,6 +278,7 @@ export function InfiniteCanvas({
           onRotateRight={() => selectedWidget && onUpdateWidget(selectedWidget.id, { rotation: selectedWidget.rotation + 15 })}
           onDuplicate  ={() => { if (selectedWidget) { onDuplicateWidget(selectedWidget.id); setSelectedId(null) } }}
           onDeselect   ={() => setSelectedId(null)}
+          onToggleLock ={() => selectedWidget && onUpdateWidget(selectedWidget.id, { locked: !selectedWidget.locked })}
         />
       )}
 
