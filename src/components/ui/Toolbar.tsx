@@ -54,30 +54,39 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
       {/* 主工具列 */}
       <motion.div
         className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-2 rounded-2xl"
-        style={{ zIndex: 100, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+        style={{
+          zIndex: 100,
+          background: 'var(--glass-bg)',
+          border: '1px solid var(--glass-border)',
+          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          // 手機防溢出
+          maxWidth: 'calc(100vw - 16px)',
+        }}
         initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2, type: 'spring', stiffness: 300 }}>
 
-        <span className="text-sm font-medium" style={{ color: 'var(--accent)', fontFamily: '"Noto Serif TC", serif', whiteSpace: 'nowrap' }}>✨ 回憶</span>
-        <div className="w-px h-4 bg-white/20" />
+        {/* 標題：手機隱藏 */}
+        <span className="hidden sm:inline text-sm font-medium" style={{ color: 'var(--accent)', fontFamily: '"Noto Serif TC", serif', whiteSpace: 'nowrap' }}>✨ 回憶</span>
+        <div className="hidden sm:block w-px h-4 bg-white/20" />
 
         {/* 模式切換 */}
-        <motion.button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-sm"
+        <motion.button className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-sm"
           style={{ background: isEditMode ? `${theme.accent}30` : 'transparent', color: isEditMode ? theme.accent : 'var(--text-secondary)', border: isEditMode ? `1px solid ${theme.accent}50` : '1px solid transparent' }}
           whileTap={{ scale: 0.95 }} onClick={() => { onModeToggle(); closeAll() }}>
           {isEditMode ? <Edit3 size={13} /> : <Eye size={13} />}
-          <span>{isEditMode ? '編輯' : '瀏覽'}</span>
+          <span className="hidden sm:inline">{isEditMode ? '編輯' : '瀏覽'}</span>
         </motion.button>
 
         {/* 新增（編輯模式） */}
         <AnimatePresence>
           {isEditMode && (
             <motion.div className="relative" initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }} exit={{ opacity: 0, width: 0 }}>
-              <motion.button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-sm"
+              <motion.button className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-sm"
                 style={{ background: showAdd ? `${theme.accent}20` : 'transparent', color: 'var(--text-secondary)' }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => { setShowAdd(!showAdd); setShowTheme(false); setShowEffects(false) }}>
-                <Plus size={13} /><span>新增</span>
+                <Plus size={13} /><span className="hidden sm:inline">新增</span>
               </motion.button>
               <AnimatePresence>
                 {showAdd && (

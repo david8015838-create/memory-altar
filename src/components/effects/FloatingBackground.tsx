@@ -1,27 +1,28 @@
 // ============================================================
-// FloatingBackground - 緩慢流動的光暈背景
-// 使用 Framer Motion 動畫，配合主題色調
+// FloatingBackground - 緩慢流動的光暈背景（手機版大幅簡化）
 // ============================================================
 
 import { motion } from 'framer-motion'
 import type { Theme } from '../../types'
 
-interface Props {
-  theme: Theme
-}
+const IS_MOBILE = typeof window !== 'undefined' && window.innerWidth <= 768
+
+interface Props { theme: Theme }
 
 export function FloatingBackground({ theme }: Props) {
-  const orbs = theme.orbColors.map((color, i) => ({
+  // 手機只用前 2 個 orb，桌面用全部 4 個
+  const orbCount = IS_MOBILE ? 2 : 4
+  const orbs = theme.orbColors.slice(0, orbCount).map((color, i) => ({
     color,
-    // 每個光球的不同初始位置與動畫參數
     x: [20 + i * 20, 60 + i * 10, 30 + i * 15, 20 + i * 20],
     y: [10 + i * 15, 50 + i * 10, 70 - i * 5, 10 + i * 15],
     scale: [1, 1.2 + i * 0.1, 0.9, 1],
-    duration: 15 + i * 5,
+    // 手機用更長週期（CPU 負擔更低）
+    duration: IS_MOBILE ? 30 + i * 10 : 15 + i * 5,
     delay: i * 3,
-    size: 300 + i * 80,
-    blur: 80 + i * 20,
-    opacity: 0.15 + i * 0.02,
+    size: IS_MOBILE ? 250 + i * 60 : 300 + i * 80,
+    blur: IS_MOBILE ? 60 + i * 15 : 80 + i * 20,
+    opacity: 0.18 + i * 0.02,
   }))
 
   return (
@@ -36,6 +37,7 @@ export function FloatingBackground({ theme }: Props) {
             background: orb.color,
             filter: `blur(${orb.blur}px)`,
             opacity: orb.opacity,
+            willChange: 'transform',
           }}
           animate={{
             x: orb.x.map(v => `${v}vw`),
@@ -51,20 +53,19 @@ export function FloatingBackground({ theme }: Props) {
         />
       ))}
 
-      {/* 星星粒子層 */}
-      <StarField />
+      {/* 星星粒子：手機不顯示 */}
+      {!IS_MOBILE && <StarField />}
     </div>
   )
 }
 
-// 細小閃爍星點
 function StarField() {
-  const stars = Array.from({ length: 40 }, (_, i) => ({
+  const stars = Array.from({ length: 30 }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
     y: Math.random() * 100,
     size: Math.random() * 2 + 0.5,
-    duration: 2 + Math.random() * 4,
+    duration: 3 + Math.random() * 4,
     delay: Math.random() * 5,
   }))
 
@@ -74,19 +75,9 @@ function StarField() {
         <motion.div
           key={star.id}
           className="absolute rounded-full bg-white"
-          style={{
-            left: `${star.x}%`,
-            top: `${star.y}%`,
-            width: star.size,
-            height: star.size,
-          }}
-          animate={{ opacity: [0.1, 0.8, 0.1] }}
-          transition={{
-            duration: star.duration,
-            delay: star.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
+          style={{ left: `${star.x}%`, top: `${star.y}%`, width: star.size, height: star.size }}
+          animate={{ opacity: [0.1, 0.7, 0.1] }}
+          transition={{ duration: star.duration, delay: star.delay, repeat: Infinity, ease: 'easeInOut' }}
         />
       ))}
     </>
