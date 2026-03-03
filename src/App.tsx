@@ -1,5 +1,5 @@
 // ============================================================
-// App.tsx v2 - 整合認證、分頁、手繪 Modal
+// App.tsx v3 - 整合認證、分頁、手繪 Modal、持續特效
 // ============================================================
 
 import { useState, useRef, useCallback, useEffect } from 'react'
@@ -12,6 +12,9 @@ import { useTheme } from './hooks/useTheme'
 import { FloatingBackground } from './components/effects/FloatingBackground'
 import { PetalRain } from './components/effects/PetalRain'
 import { WhisperMessages } from './components/effects/WhisperMessages'
+import { StarShower } from './components/effects/StarShower'
+import { SnowFall } from './components/effects/SnowFall'
+import { Fireflies } from './components/effects/Fireflies'
 import { InfiniteCanvas } from './components/Canvas/InfiniteCanvas'
 import { Toolbar } from './components/ui/Toolbar'
 import { PageTabs } from './components/pages/PageTabs'
@@ -28,28 +31,33 @@ export default function App() {
   const { widgets, isLoading, isOnline, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront } = useWidgets(spaceId, currentPageId)
 
   const [mode, setMode] = useState<AppMode>('edit')
-  const [isPetalActive, setIsPetalActive] = useState(false)
-  const [isWhisperActive, setIsWhisperActive] = useState(false)
   const [showDrawingCanvas, setShowDrawingCanvas] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // ── 特效開關（持續循環，點按切換）
+  const [isPetalActive,   setIsPetalActive]   = useState(false)
+  const [isWhisperActive, setIsWhisperActive] = useState(false)
+  const [isStarActive,    setIsStarActive]    = useState(false)
+  const [isSnowActive,    setIsSnowActive]    = useState(false)
+  const [isFireflyActive, setIsFireflyActive] = useState(false)
+
   const canvasRef = useRef<HTMLDivElement | null>(null)
 
-  // ── Keepalive：每 4 分鐘 ping 一次，防止 Supabase 免費版閒置停機 ──
+  // ── Keepalive：每 4 分鐘 ping 一次
   useEffect(() => {
     if (!spaceId) return
     const id = setInterval(() => ping(spaceId), 4 * 60 * 1000)
     return () => clearInterval(id)
   }, [spaceId])
 
-  // ── 刪除整個房間 ──────────────────────────────────────
+  // ── 刪除整個房間
   const handleDeleteRoom = async () => {
     setIsDeleting(true)
     const ok = await deleteSpace(spaceId)
     setIsDeleting(false)
     setShowDeleteConfirm(false)
-    if (ok) logout()  // 刪除成功後登出
+    if (ok) logout()
   }
 
   const getCanvasCenter = useCallback(() => ({
@@ -59,18 +67,15 @@ export default function App() {
 
   const handleAddWidget = (type: WidgetType) => addWidget(type, getCanvasCenter())
 
-  // 手繪完成 → 建立 drawing widget
   const handleDrawingSave = (imageUrl: string) => {
     const widgetId = addWidget('drawing', getCanvasCenter())
-    // 等下一個 tick 讓 widget 先建立，再更新 imageUrl
     setTimeout(() => {
-      // 找到剛建立的 widget 更新 content
       updateWidget(widgetId as string, { content: { imageUrl, caption: '', showBorder: true } })
     }, 100)
     setShowDrawingCanvas(false)
   }
 
-  // ── 載入中 ────────────────────────────────────────────
+  // ── 載入中
   if (status === 'loading') {
     return (
       <div className="fixed inset-0 flex items-center justify-center" style={{ background: theme.backgroundGradient }}>
@@ -83,7 +88,7 @@ export default function App() {
     )
   }
 
-  // ── 未登入 ────────────────────────────────────────────
+  // ── 未登入
   if (status === 'unauthenticated') {
     return (
       <LoginScreen
@@ -97,7 +102,7 @@ export default function App() {
     )
   }
 
-  // ── 主畫面 ────────────────────────────────────────────
+  // ── 主畫面
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: theme.backgroundGradient }}>
       <FloatingBackground theme={theme} />
@@ -124,14 +129,19 @@ export default function App() {
           onAddWidget={handleAddWidget}
           onAddDrawing={() => setShowDrawingCanvas(true)}
           onThemeChange={(n: ThemeName) => changeTheme(n)}
-          onTriggerPetals={() => !isPetalActive && setIsPetalActive(true)}
-          onTriggerWhispers={() => !isWhisperActive && setIsWhisperActive(true)}
           onLogout={logout}
           onDeleteRoom={() => setShowDeleteConfirm(true)}
+          effects={{
+            petal:   { active: isPetalActive,   onToggle: () => setIsPetalActive(v => !v) },
+            whisper: { active: isWhisperActive, onToggle: () => setIsWhisperActive(v => !v) },
+            star:    { active: isStarActive,    onToggle: () => setIsStarActive(v => !v) },
+            snow:    { active: isSnowActive,    onToggle: () => setIsSnowActive(v => !v) },
+            firefly: { active: isFireflyActive, onToggle: () => setIsFireflyActive(v => !v) },
+          }}
         />
       )}
 
-      {/* 瀏覽模式：固定的「返回編輯」按鈕（手機/桌面都能點） */}
+      {/* 瀏覽模式：固定的「返回編輯」按鈕 */}
       {!showDrawingCanvas && mode === 'view' && (
         <motion.button
           className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-sm"
@@ -171,11 +181,12 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* 花瓣雨 */}
-      <PetalRain isActive={isPetalActive} onComplete={() => setIsPetalActive(false)} />
-
-      {/* 悄悄話 */}
-      <WhisperMessages isActive={isWhisperActive} onComplete={() => setIsWhisperActive(false)} accentColor={theme.accent} />
+      {/* 持續循環特效層 */}
+      <PetalRain   isActive={isPetalActive} />
+      <WhisperMessages isActive={isWhisperActive} accentColor={theme.accent} />
+      <StarShower  isActive={isStarActive} />
+      <SnowFall    isActive={isSnowActive} />
+      <Fireflies   isActive={isFireflyActive} />
 
       {/* 空畫布提示 */}
       <AnimatePresence>

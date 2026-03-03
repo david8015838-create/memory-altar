@@ -3,7 +3,10 @@
 // ============================================================
 
 export type WidgetType = 'photo' | 'sticker' | 'timer' | 'weather' | 'video' | 'drawing'
-export type ThemeName = 'midnight' | 'sunset' | 'forest'
+export type ThemeName =
+  | 'midnight' | 'sunset' | 'forest'
+  | 'sakura' | 'ocean' | 'rose' | 'aurora'
+  | 'lavender' | 'coffee' | 'moonlight' | 'neon' | 'galaxy'
 export type WeatherMood = 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'stormy' | 'rainbow'
 export type AppMode = 'view' | 'edit'
 

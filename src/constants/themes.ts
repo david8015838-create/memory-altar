@@ -46,6 +46,132 @@ export const THEMES: Record<string, Theme> = {
     textPrimary: '#ecfdf5',
     textSecondary: '#a7f3d0',
   },
+
+  // 🌸 粉櫻春日 - 玫瑰粉，嬌嫩浪漫
+  sakura: {
+    name: 'sakura',
+    label: '粉櫻春日',
+    emoji: '🌸',
+    backgroundGradient: 'linear-gradient(135deg, #1a0812 0%, #2e1020 30%, #1a0818 60%, #1a0812 100%)',
+    orbColors: ['#db2777', '#ec4899', '#f43f5e', '#be185d'],
+    glassBorder: 'rgba(244, 114, 182, 0.3)',
+    glassBackground: 'rgba(46, 16, 32, 0.6)',
+    accent: '#f472b6',
+    textPrimary: '#fdf2f8',
+    textSecondary: '#fbcfe8',
+  },
+
+  // 🌊 深海漫遊 - 藍綠深邃，如海底世界
+  ocean: {
+    name: 'ocean',
+    label: '深海漫遊',
+    emoji: '🌊',
+    backgroundGradient: 'linear-gradient(135deg, #020c18 0%, #041928 30%, #02111e 60%, #020c18 100%)',
+    orbColors: ['#0369a1', '#0891b2', '#0e7490', '#164e63'],
+    glassBorder: 'rgba(56, 189, 248, 0.3)',
+    glassBackground: 'rgba(4, 25, 40, 0.6)',
+    accent: '#38bdf8',
+    textPrimary: '#f0f9ff',
+    textSecondary: '#bae6fd',
+  },
+
+  // 🌹 玫瑰情人 - 深紅熱情，濃烈愛意
+  rose: {
+    name: 'rose',
+    label: '玫瑰情人',
+    emoji: '🌹',
+    backgroundGradient: 'linear-gradient(135deg, #1c0508 0%, #2e0910 30%, #1a0608 60%, #1c0508 100%)',
+    orbColors: ['#b91c1c', '#dc2626', '#e11d48', '#881337'],
+    glassBorder: 'rgba(248, 113, 113, 0.3)',
+    glassBackground: 'rgba(46, 9, 16, 0.6)',
+    accent: '#f87171',
+    textPrimary: '#fff1f2',
+    textSecondary: '#fecdd3',
+  },
+
+  // 🌌 極光之夜 - 流動極光，神秘夢幻
+  aurora: {
+    name: 'aurora',
+    label: '極光之夜',
+    emoji: '🌌',
+    backgroundGradient: 'linear-gradient(135deg, #020f0a 0%, #031a10 30%, #020f10 60%, #020f0a 100%)',
+    orbColors: ['#059669', '#0d9488', '#0891b2', '#7c3aed'],
+    glassBorder: 'rgba(52, 211, 153, 0.3)',
+    glassBackground: 'rgba(3, 26, 16, 0.6)',
+    accent: '#6ee7b7',
+    textPrimary: '#f0fdf4',
+    textSecondary: '#bbf7d0',
+  },
+
+  // 💜 薰衣草田 - 淡紫芬芳，溫柔夢境
+  lavender: {
+    name: 'lavender',
+    label: '薰衣草田',
+    emoji: '💜',
+    backgroundGradient: 'linear-gradient(135deg, #0f0a1e 0%, #1a1030 30%, #120a24 60%, #0f0a1e 100%)',
+    orbColors: ['#7c3aed', '#9333ea', '#a855f7', '#6d28d9'],
+    glassBorder: 'rgba(196, 181, 253, 0.3)',
+    glassBackground: 'rgba(26, 16, 48, 0.6)',
+    accent: '#c084fc',
+    textPrimary: '#fdf4ff',
+    textSecondary: '#e9d5ff',
+  },
+
+  // ☕ 咖啡時光 - 溫暖琥珀，慵懶午後
+  coffee: {
+    name: 'coffee',
+    label: '咖啡時光',
+    emoji: '☕',
+    backgroundGradient: 'linear-gradient(135deg, #0f0a05 0%, #1e1208 30%, #150d07 60%, #0f0a05 100%)',
+    orbColors: ['#92400e', '#a16207', '#78350f', '#b45309'],
+    glassBorder: 'rgba(217, 119, 6, 0.3)',
+    glassBackground: 'rgba(30, 18, 8, 0.6)',
+    accent: '#fbbf24',
+    textPrimary: '#fffbeb',
+    textSecondary: '#fde68a',
+  },
+
+  // 🌙 月光銀白 - 皎潔清冷，如月下漫步
+  moonlight: {
+    name: 'moonlight',
+    label: '月光銀白',
+    emoji: '🌙',
+    backgroundGradient: 'linear-gradient(135deg, #080c14 0%, #0f1520 30%, #0a1018 60%, #080c14 100%)',
+    orbColors: ['#334155', '#475569', '#64748b', '#1e293b'],
+    glassBorder: 'rgba(148, 163, 184, 0.3)',
+    glassBackground: 'rgba(15, 21, 32, 0.6)',
+    accent: '#cbd5e1',
+    textPrimary: '#f8fafc',
+    textSecondary: '#e2e8f0',
+  },
+
+  // 🌃 霓虹城市 - 電馭賽博，絢爛都市
+  neon: {
+    name: 'neon',
+    label: '霓虹城市',
+    emoji: '🌃',
+    backgroundGradient: 'linear-gradient(135deg, #020205 0%, #050210 30%, #020208 60%, #020205 100%)',
+    orbColors: ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981'],
+    glassBorder: 'rgba(236, 72, 153, 0.3)',
+    glassBackground: 'rgba(5, 2, 16, 0.6)',
+    accent: '#e879f9',
+    textPrimary: '#fdf4ff',
+    textSecondary: '#f0abfc',
+  },
+
+  // 🪐 銀河彼端 - 深邃宇宙，遙遠星河
+  galaxy: {
+    name: 'galaxy',
+    label: '銀河彼端',
+    emoji: '🪐',
+    backgroundGradient: 'linear-gradient(135deg, #07030f 0%, #0f0520 30%, #070315 60%, #07030f 100%)',
+    orbColors: ['#4c1d95', '#5b21b6', '#3730a3', '#312e81'],
+    glassBorder: 'rgba(139, 92, 246, 0.2)',
+    glassBackground: 'rgba(7, 3, 15, 0.7)',
+    accent: '#a5b4fc',
+    textPrimary: '#faf5ff',
+    textSecondary: '#e0e7ff',
+  },
 }
 
 /** 心情天氣的顯示設定 */

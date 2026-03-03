@@ -1,88 +1,79 @@
 // ============================================================
-// PetalRain - 🌸 彩蛋一：花瓣雨特效
-// 點擊隱藏按鈕後，30 片花瓣從頂部飄落
+// PetalRain v2 - 花瓣雨（持續循環，點按停止）
 // ============================================================
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface Petal {
   id: number
-  x: number        // 水平起始位置 (vw)
-  delay: number    // 動畫延遲 (s)
-  duration: number // 飄落時長 (s)
-  size: number     // 花瓣大小 (px)
-  rotation: number // 初始旋轉
-  emoji: string    // 花瓣 emoji（隨機選一個）
+  x: number
+  delay: number
+  duration: number
+  size: number
+  rotation: number
+  emoji: string
+  drift: number
 }
 
 const PETAL_EMOJIS = ['🌸', '🌸', '🌸', '🌺', '🌷', '🪷', '🌹']
+const idRef = { current: 0 }
 
-function createPetals(count = 30): Petal[] {
-  return Array.from({ length: count }, (_, i) => ({
-    id: i,
-    x: Math.random() * 90 + 5,
-    delay: Math.random() * 3,
-    duration: 3 + Math.random() * 4,
-    size: 16 + Math.random() * 16,
+function createPetals(count = 35): Petal[] {
+  return Array.from({ length: count }, () => ({
+    id: idRef.current++,
+    x: Math.random() * 95 + 2,
+    delay: Math.random() * 4,
+    duration: 4 + Math.random() * 4,
+    size: 16 + Math.random() * 18,
     rotation: Math.random() * 360,
     emoji: PETAL_EMOJIS[Math.floor(Math.random() * PETAL_EMOJIS.length)],
+    drift: (Math.random() - 0.5) * 250,
   }))
 }
 
 interface Props {
   isActive: boolean
-  onComplete: () => void
 }
 
-export function PetalRain({ isActive, onComplete }: Props) {
+export function PetalRain({ isActive }: Props) {
   const [petals, setPetals] = useState<Petal[]>([])
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    if (isActive) {
-      setPetals(createPetals(30))
-
-      // 7 秒後清除
-      const timer = setTimeout(() => {
-        setPetals([])
-        onComplete()
-      }, 7000)
-      return () => clearTimeout(timer)
+    if (!isActive) {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      setPetals([])
+      return
     }
-  }, [isActive, onComplete])
+    setPetals(createPetals(35))
+    intervalRef.current = setInterval(() => setPetals(createPetals(35)), 7500)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [isActive])
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 9999 }}>
+    <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 9997 }}>
       <AnimatePresence>
-        {petals.map(petal => (
+        {petals.map(p => (
           <motion.div
-            key={petal.id}
+            key={p.id}
             className="absolute select-none"
-            style={{
-              left: `${petal.x}%`,
-              top: -50,
-              fontSize: petal.size,
-              rotate: petal.rotation,
-            }}
+            style={{ left: `${p.x}%`, top: -60, fontSize: p.size }}
             animate={{
-              y: ['0vh', '110vh'],
-              x: [0, (Math.random() - 0.5) * 200],
-              rotate: [petal.rotation, petal.rotation + 720],
+              y: ['0vh', '112vh'],
+              x: [0, p.drift],
+              rotate: [p.rotation, p.rotation + 720],
               opacity: [0, 1, 1, 0],
             }}
             transition={{
-              duration: petal.duration,
-              delay: petal.delay,
+              duration: p.duration,
+              delay: p.delay,
               ease: 'easeIn',
-              opacity: {
-                times: [0, 0.1, 0.8, 1],
-                duration: petal.duration,
-                delay: petal.delay,
-              },
+              opacity: { times: [0, 0.08, 0.82, 1], duration: p.duration, delay: p.delay },
             }}
-            exit={{ opacity: 0 }}
+            exit={{ opacity: 0, transition: { duration: 0.4 } }}
           >
-            {petal.emoji}
+            {p.emoji}
           </motion.div>
         ))}
       </AnimatePresence>
