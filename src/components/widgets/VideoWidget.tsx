@@ -2,7 +2,7 @@
 // VideoWidget v2 - 支援 YouTube / 直接連結 / 檔案上傳
 // ============================================================
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Video, Link, Upload, RotateCcw, AlertCircle } from 'lucide-react'
 import type { Widget, VideoContent } from '../../types'
@@ -48,8 +48,6 @@ const block = (e: React.SyntheticEvent) => e.stopPropagation()
 
 export function VideoWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
   const content = widget.content as VideoContent
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   const [uploading, setUploading] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [showUrlInput, setShowUrlInput] = useState(false)
@@ -226,13 +224,21 @@ export function VideoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
                       >
                         <Link size={12} /> YouTube / 網址連結
                       </button>
-                      <button
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs w-full justify-center"
+                      {/* label 直接綁定 input，iOS Safari 相簿選擇器最可靠的方法 */}
+                      <label
+                        className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs w-full justify-center cursor-pointer"
                         style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-secondary)' }}
-                        onClick={() => fileInputRef.current?.click()}
                       >
-                        <Upload size={12} /> 從裝置上傳（&lt;{MAX_VIDEO_MB}MB）
-                      </button>
+                        <Upload size={12} /> 從相簿上傳（&lt;{MAX_VIDEO_MB}MB）
+                        {/* input 覆蓋整個 label 區域，opacity:0 觸碰即可選擇 */}
+                        <input
+                          type="file"
+                          accept="video/*"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          style={{ fontSize: 0 }}
+                          onChange={handleUpload}
+                        />
+                      </label>
                     </div>
                   )}
                 </>
@@ -273,7 +279,6 @@ export function VideoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
         </div>
       </div>
 
-      <input ref={fileInputRef} type="file" accept="video/*" className="hidden" onChange={handleUpload} />
     </BaseWidget>
   )
 }
