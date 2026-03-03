@@ -4,9 +4,10 @@
 // 這樣子元素 button 的 click 不會觸發拖曳
 // ============================================================
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import type { Widget } from '../../types'
+import { useCanvasScale } from '../../contexts/CanvasContext'
 
 interface Props {
   widget: Widget
@@ -28,6 +29,11 @@ export function BaseWidget({
   minWidth = 120, minHeight = 80,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false)
+
+  // 讀取畫布縮放比，拖曳時換算螢幕位移 → 畫布位移
+  const canvasScale = useCanvasScale()
+  const canvasScaleRef = useRef(canvasScale)
+  useEffect(() => { canvasScaleRef.current = canvasScale }, [canvasScale])
 
   const isDraggingRef = useRef(false)       // 當前是否正在拖曳
   const downOnInteractive = useRef(false)    // 按下時是否在 button/input 等上
@@ -61,9 +67,11 @@ export function BaseWidget({
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDraggingRef.current) return
     didDrag.current = true
+    // 除以 canvasScale，確保在縮放後拖曳速度與手指移動一致
+    const s = canvasScaleRef.current
     onUpdate({
-      x: widgetStart.current.x + (e.clientX - pointerStart.current.x),
-      y: widgetStart.current.y + (e.clientY - pointerStart.current.y),
+      x: widgetStart.current.x + (e.clientX - pointerStart.current.x) / s,
+      y: widgetStart.current.y + (e.clientY - pointerStart.current.y) / s,
     })
   }
 
