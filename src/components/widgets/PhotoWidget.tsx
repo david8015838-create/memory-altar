@@ -4,7 +4,7 @@
 // 每款都有下方說明文字
 // ============================================================
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, ZoomIn, X } from 'lucide-react'
 import type { Widget, PhotoContent, PhotoStyle } from '../../types'
@@ -26,7 +26,6 @@ const STYLE_LABELS: Record<PhotoStyle, string> = {
 
 export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
   const content = widget.content as PhotoContent
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [editingCaption, setEditingCaption] = useState(false)
@@ -111,17 +110,20 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
                 )}
               </>
             ) : (
-              <button className="w-full h-full flex flex-col items-center justify-center gap-2"
-                style={{ color: '#888' }}
-                onClick={() => isEditMode && fileInputRef.current?.click()}
-                disabled={!isEditMode}>
+              <label className="w-full h-full flex flex-col items-center justify-center gap-2"
+                style={{ color: '#888', cursor: isEditMode ? 'pointer' : 'default' }}>
                 {uploading ? (
                   <motion.div className="w-5 h-5 border-2 border-gray-500 border-t-white rounded-full"
                     animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
                 ) : (
                   <><Camera size={24} />{isEditMode && <span className="text-xs">點擊上傳</span>}</>
                 )}
-              </button>
+                {isEditMode && !uploading && (
+                  <input type="file" accept="image/*"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', fontSize: 0 }}
+                    onChange={handleUpload} />
+                )}
+              </label>
             )}
           </div>
 
@@ -187,8 +189,6 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
           </div>
         )}
       </BaseWidget>
-
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
 
       {/* 燈箱 */}
       <AnimatePresence>
