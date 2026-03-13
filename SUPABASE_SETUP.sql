@@ -1,15 +1,38 @@
--- ============================================================
--- 🗄️ Supabase 資料庫設定 SQL
--- 在 Supabase Dashboard > SQL Editor 執行這段程式碼
--- ============================================================
+-- Memory Altar - Supabase Setup SQL
+-- Paste this entire file into Supabase Dashboard > SQL Editor > Run
 
--- 1. 建立 widgets 資料表
+-- ===== 1. spaces =====
+CREATE TABLE IF NOT EXISTS spaces (
+  id TEXT PRIMARY KEY,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE spaces ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on spaces" ON spaces;
+CREATE POLICY "Allow all on spaces" ON spaces FOR ALL USING (true) WITH CHECK (true);
+
+-- ===== 2. pages =====
+CREATE TABLE IF NOT EXISTS pages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  space_id TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT 'page',
+  page_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS pages_space_id_idx ON pages(space_id);
+ALTER TABLE pages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on pages" ON pages;
+CREATE POLICY "Allow all on pages" ON pages FOR ALL USING (true) WITH CHECK (true);
+ALTER TABLE pages REPLICA IDENTITY FULL;
+
+-- ===== 3. widgets =====
 CREATE TABLE IF NOT EXISTS widgets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  space_id TEXT NOT NULL DEFAULT 'default',
-  type TEXT NOT NULL CHECK (type IN ('polaroid', 'sticker', 'timer', 'weather')),
-  x FLOAT NOT NULL DEFAULT 100,
-  y FLOAT NOT NULL DEFAULT 100,
+  space_id TEXT NOT NULL,
+  page_id UUID REFERENCES pages(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  x FLOAT NOT NULL DEFAULT 0,
+  y FLOAT NOT NULL DEFAULT 0,
   rotation FLOAT NOT NULL DEFAULT 0,
   width FLOAT NOT NULL DEFAULT 200,
   height FLOAT NOT NULL DEFAULT 200,
@@ -18,35 +41,53 @@ CREATE TABLE IF NOT EXISTS widgets (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
--- 2. 建立索引
 CREATE INDEX IF NOT EXISTS widgets_space_id_idx ON widgets(space_id);
+CREATE INDEX IF NOT EXISTS widgets_page_id_idx ON widgets(page_id);
 
--- 3. 啟用 Row Level Security（RLS）
+-- ===== 4. widgets RLS =====
 ALTER TABLE widgets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all on widgets" ON widgets;
+DROP POLICY IF EXISTS "Allow all operations" ON widgets;
+CREATE POLICY "Allow all on widgets" ON widgets FOR ALL USING (true) WITH CHECK (true);
 
--- 4. 建立存取政策（允許所有人讀寫，適合私人小專案）
---    如果未來要加入認證，請修改這裡的 policy
-CREATE POLICY "Allow all operations"
-  ON widgets FOR ALL
-  USING (true)
-  WITH CHECK (true);
+-- ===== 5. widgets type constraint (drop old, add new) =====
+DO $$
+DECLARE
+  cname text;
+BEGIN
+  FOR cname IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_attribute att ON att.attrelid = rel.oid
+      AND att.attnum = ANY(con.conkey)
+    WHERE rel.relname = 'widgets'
+      AND con.contype = 'c'
+      AND att.attname = 'type'
+  LOOP
+    EXECUTE 'ALTER TABLE widgets DROP CONSTRAINT ' || quote_ident(cname);
+  END LOOP;
+END $$;
 
--- 5. 啟用 Realtime（讓兩個人的畫面即時同步）
+UPDATE widgets SET type = 'photo' WHERE type = 'polaroid';
+
+ALTER TABLE widgets ADD CONSTRAINT widgets_type_check
+  CHECK (type IN ('photo', 'sticker', 'timer', 'weather', 'video', 'drawing'));
+
+-- ===== 6. Enable Realtime =====
 ALTER TABLE widgets REPLICA IDENTITY FULL;
 
--- 在 Supabase Dashboard > Database > Replication 中也要啟用 widgets 表
 
--- ============================================================
--- 📦 Storage Bucket 設定
--- 在 Supabase Dashboard > Storage 執行以下步驟：
--- 1. 點擊「New Bucket」
--- 2. Bucket 名稱：photos
--- 3. 設定為 Public bucket（勾選 Public）
--- 4. 點擊「Save」
--- ============================================================
-
--- 以下是 Storage 的 RLS Policy（在 Storage > Policies 設定）
--- 允許任何人上傳和讀取照片：
--- INSERT: true
--- SELECT: true
+-- =====================================================
+-- After running this SQL, do these steps in the UI:
+--
+-- [A] Enable Realtime for widgets table:
+--     Dashboard > Database > Replication
+--     Toggle ON for: widgets, pages
+--
+-- [B] Create Storage Bucket:
+--     Dashboard > Storage > New Bucket
+--     Name: photos
+--     Public: YES (toggle on)
+--     Save
+-- =====================================================

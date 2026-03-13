@@ -1,9 +1,10 @@
 // ============================================================
 // LoveNoteWidget — 信封情書 Widget
-// 關閉：信封圖案，點擊後展開讀信
+// 信封外觀，點擊後彈出信紙樣式 Modal
 // ============================================================
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Widget, LoveNoteContent } from '../../types'
 import { BaseWidget } from './BaseWidget'
@@ -28,73 +29,193 @@ export function LoveNoteWidget({ widget, isEditMode, isSelected, onSelect, onDes
 
   const sealColor = '#e879a0'
 
-  return (
-    <BaseWidget
-      widget={widget} isEditMode={isEditMode} isSelected={isSelected}
-      onSelect={onSelect} onDeselect={onDeselect}
-      onUpdate={onUpdate} onBringToFront={onBringToFront}
-      minWidth={200} minHeight={160}
-    >
-      <div className="w-full h-full relative select-none" style={{ perspective: 800 }}>
-
-        {/* ── 信封外殼 ──────────────────────────── */}
+  // ── 信紙 Modal（Portal）─────────────────────────────────
+  const letterModal = createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        // 背景遮罩
         <motion.div
-          className="w-full h-full rounded-2xl overflow-hidden"
-          style={{
-            background: 'linear-gradient(160deg, #fff8f0 0%, #fde8ef 100%)',
-            border: '1.5px solid rgba(232,121,160,0.4)',
-            boxShadow: '0 4px 24px rgba(232,121,160,0.2), 0 1px 4px rgba(0,0,0,0.12)',
-            position: 'relative',
-          }}
+          className="fixed inset-0 flex items-center justify-center"
+          style={{ zIndex: 9999, background: 'rgba(10,4,20,0.7)', backdropFilter: 'blur(6px)' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setIsOpen(false)}
         >
-          {/* 信封 V 折痕 */}
-          <svg
-            viewBox="0 0 100 40"
-            preserveAspectRatio="none"
-            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '42%', zIndex: 3, pointerEvents: 'none' }}
+          {/* 信紙卡片 */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.88, y: 40 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.88, y: 40 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              width: 'min(420px, 88vw)',
+              maxHeight: '80vh',
+              background: 'linear-gradient(170deg, #fffaf6 0%, #fff3f7 100%)',
+              borderRadius: 20,
+              boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 2px 8px rgba(232,121,160,0.2)',
+              border: '1px solid rgba(232,121,160,0.25)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
           >
-            {/* 上蓋翻起效果（關閉時顯示，打開時隱藏） */}
-            <AnimatePresence>
-              {!isOpen && (
-                <motion.polygon
-                  points="0,0 100,0 50,55"
-                  fill="#fdd0de"
-                  stroke="rgba(232,121,160,0.3)"
-                  strokeWidth="0.5"
-                  initial={{ opacity: 1 }}
-                  exit={{ opacity: 0, scaleY: 0 }}
-                  style={{ transformOrigin: 'top center' }}
-                />
+            {/* 信紙橫線裝飾 */}
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'none',
+                backgroundImage: `repeating-linear-gradient(
+                  transparent,
+                  transparent 31px,
+                  rgba(232,121,160,0.12) 31px,
+                  rgba(232,121,160,0.12) 32px
+                )`,
+                backgroundPositionY: '72px',
+              }}
+            />
+
+            {/* 頂部粉邊 */}
+            <div style={{ height: 6, background: `linear-gradient(90deg, ${sealColor}cc, #f9a8d4cc)`, flexShrink: 0 }} />
+
+            {/* 信紙內容區 */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px 24px', position: 'relative', zIndex: 1 }}>
+
+              {/* 稱呼 */}
+              <p style={{
+                fontFamily: '"Caveat", cursive',
+                fontSize: 20,
+                color: '#c06090',
+                fontWeight: 600,
+                marginBottom: 20,
+              }}>
+                親愛的你 ❤
+              </p>
+
+              {/* 信件正文 */}
+              <div style={{
+                fontFamily: '"Caveat", cursive',
+                fontSize: 18,
+                color: '#5a2540',
+                lineHeight: 2,        // 配合橫線間距
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                minHeight: 80,
+              }}>
+                {content.message || '（還沒寫信喔，在編輯模式下點擊即可填寫）'}
+              </div>
+
+              {/* 署名 */}
+              {content.from && (
+                <p style={{
+                  fontFamily: '"Caveat", cursive',
+                  fontSize: 17,
+                  color: '#c06090',
+                  textAlign: 'right',
+                  marginTop: 24,
+                }}>
+                  —— {content.from}
+                </p>
               )}
-            </AnimatePresence>
+            </div>
 
-            {/* 側折痕（裝飾線） */}
-            <line x1="0" y1="0" x2="50" y2="55" stroke="rgba(232,121,160,0.2)" strokeWidth="0.5" />
-            <line x1="100" y1="0" x2="50" y2="55" stroke="rgba(232,121,160,0.2)" strokeWidth="0.5" />
-          </svg>
+            {/* 底部：封蠟裝飾 + 關閉 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 24px 16px',
+              borderTop: '1px solid rgba(232,121,160,0.15)',
+              flexShrink: 0,
+              position: 'relative',
+              zIndex: 1,
+            }}>
+              <span style={{ fontSize: 20 }}>💌</span>
+              <motion.button
+                style={{
+                  fontSize: 12,
+                  color: 'rgba(180,90,130,0.7)',
+                  background: 'rgba(232,121,160,0.1)',
+                  border: '1px solid rgba(232,121,160,0.25)',
+                  borderRadius: 20,
+                  padding: '4px 16px',
+                  cursor: 'pointer',
+                }}
+                whileHover={{ background: 'rgba(232,121,160,0.2)' }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setIsOpen(false)}
+              >
+                收起信 ✕
+              </motion.button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body
+  )
 
-          {/* 信封底部 V 折痕 */}
-          <svg
-            viewBox="0 0 100 40"
-            preserveAspectRatio="none"
-            style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '38%', zIndex: 1, pointerEvents: 'none' }}
+  return (
+    <>
+      {letterModal}
+
+      <BaseWidget
+        widget={widget} isEditMode={isEditMode} isSelected={isSelected}
+        onSelect={onSelect} onDeselect={onDeselect}
+        onUpdate={onUpdate} onBringToFront={onBringToFront}
+        minWidth={200} minHeight={160}
+      >
+        <div className="w-full h-full relative select-none" style={{ perspective: 800 }}>
+
+          {/* ── 信封外殼（永遠顯示封閉狀態）──────────── */}
+          <motion.div
+            className="w-full h-full rounded-2xl overflow-hidden"
+            style={{
+              background: 'linear-gradient(160deg, #fff8f0 0%, #fde8ef 100%)',
+              border: '1.5px solid rgba(232,121,160,0.4)',
+              boxShadow: '0 4px 24px rgba(232,121,160,0.2), 0 1px 4px rgba(0,0,0,0.12)',
+              position: 'relative',
+            }}
           >
-            <polygon points="0,40 100,40 50,0" fill="#fde0eb" stroke="rgba(232,121,160,0.2)" strokeWidth="0.5" />
-          </svg>
+            {/* 信封上蓋 V 折痕 */}
+            <svg
+              viewBox="0 0 100 40"
+              preserveAspectRatio="none"
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '42%', zIndex: 3, pointerEvents: 'none' }}
+            >
+              <polygon
+                points="0,0 100,0 50,55"
+                fill="#fdd0de"
+                stroke="rgba(232,121,160,0.3)"
+                strokeWidth="0.5"
+              />
+              <line x1="0" y1="0" x2="50" y2="55" stroke="rgba(232,121,160,0.2)" strokeWidth="0.5" />
+              <line x1="100" y1="0" x2="50" y2="55" stroke="rgba(232,121,160,0.2)" strokeWidth="0.5" />
+            </svg>
 
-          {/* 信封中間區域 */}
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center"
-            style={{ zIndex: 2, padding: '20% 16px 12px' }}
-          >
-            {!isOpen ? (
-              /* ── 關閉：封蠟印章 + 點擊提示 ── */
+            {/* 信封底部 V 折痕 */}
+            <svg
+              viewBox="0 0 100 40"
+              preserveAspectRatio="none"
+              style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '38%', zIndex: 1, pointerEvents: 'none' }}
+            >
+              <polygon points="0,40 100,40 50,0" fill="#fde0eb" stroke="rgba(232,121,160,0.2)" strokeWidth="0.5" />
+            </svg>
+
+            {/* 信封中央：封蠟印章 */}
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center"
+              style={{ zIndex: 2, padding: '20% 16px 12px' }}
+            >
               <motion.div
                 className="flex flex-col items-center gap-2"
                 animate={{ y: [0, -3, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
               >
-                {/* 封蠟 */}
                 <motion.div
                   className="flex items-center justify-center cursor-pointer"
                   style={{
@@ -105,7 +226,8 @@ export function LoveNoteWidget({ widget, isEditMode, isSelected, onSelect, onDes
                   }}
                   whileHover={{ scale: 1.08 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={(e) => { block(e); if (!isEditMode) setIsOpen(true) }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => { e.stopPropagation(); setIsOpen(true) }}
                 >
                   💌
                 </motion.div>
@@ -118,146 +240,103 @@ export function LoveNoteWidget({ widget, isEditMode, isSelected, onSelect, onDes
                   <p style={{ fontSize: 9, color: 'rgba(180,100,130,0.5)' }}>點擊打開</p>
                 )}
               </motion.div>
-            ) : (
-              /* ── 打開：信件內容 ── */
+            </div>
+          </motion.div>
+
+          {/* ── Edit mode：浮動編輯列 ────────────────── */}
+          <AnimatePresence>
+            {isEditMode && isSelected && (
               <motion.div
-                className="w-full h-full flex flex-col"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 25, delay: 0.1 }}
-                style={{ padding: '0 4px', gap: 6 }}
+                data-no-drag
+                className="absolute left-1/2 -translate-x-1/2 flex flex-col gap-1.5 p-2 rounded-2xl"
+                style={{
+                  top: 'calc(100% + 10px)',
+                  background: 'rgba(8,6,24,0.97)',
+                  border: '1px solid rgba(232,121,160,0.3)',
+                  backdropFilter: 'blur(20px)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                  width: Math.max(widget.width, 220),
+                  zIndex: 50,
+                }}
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                onMouseDown={block}
+                onPointerDown={block}
               >
-                <p style={{ fontSize: 12, color: '#c06090', fontFamily: '"Caveat", cursive', fontWeight: 600 }}>
-                  親愛的你 ❤
-                </p>
-
-                {/* 信件正文 */}
-                <div style={{
-                  flex: 1,
-                  fontSize: 13,
-                  color: '#6d3050',
-                  fontFamily: '"Caveat", cursive',
-                  lineHeight: 1.6,
-                  overflowY: 'auto',
-                  wordBreak: 'break-word',
-                  whiteSpace: 'pre-wrap',
-                }}>
-                  {content.message || '（還沒寫信喔，在編輯模式下點擊即可填寫）'}
-                </div>
-
-                {/* 署名 */}
-                {content.from && (
-                  <p style={{ fontSize: 12, color: '#c06090', fontFamily: '"Caveat", cursive', textAlign: 'right' }}>
-                    —— {content.from}
-                  </p>
+                {/* 信件內容 */}
+                <label style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>信件內容</label>
+                {editingMsg ? (
+                  <textarea
+                    autoFocus
+                    className="rounded-xl px-2 py-1.5 text-sm outline-none resize-none"
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      color: 'rgba(255,255,255,0.9)',
+                      border: '1px solid rgba(232,121,160,0.4)',
+                      fontFamily: '"Caveat", cursive',
+                      fontSize: 14,
+                      minHeight: 80,
+                    }}
+                    value={content.message}
+                    onChange={e => onUpdate({ content: { ...content, message: e.target.value } })}
+                    onBlur={() => setEditingMsg(false)}
+                  />
+                ) : (
+                  <button
+                    className="rounded-xl px-2 py-1.5 text-sm text-left"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      color: content.message ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)',
+                      border: '1px dashed rgba(232,121,160,0.3)',
+                      fontFamily: '"Caveat", cursive',
+                      fontSize: 14,
+                      minHeight: 36,
+                    }}
+                    onClick={() => setEditingMsg(true)}
+                  >
+                    {content.message || '點擊填寫信件內容…'}
+                  </button>
                 )}
 
-                {/* 關閉按鈕 */}
-                <motion.button
-                  style={{ fontSize: 9, color: 'rgba(180,100,130,0.5)', textAlign: 'center' }}
-                  onClick={(e) => { block(e); setIsOpen(false) }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  ✕ 收起
-                </motion.button>
+                {/* 署名 */}
+                <label style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>署名（寄件人）</label>
+                {editingFrom ? (
+                  <input
+                    autoFocus
+                    className="rounded-xl px-2 py-1.5 text-sm outline-none"
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      color: 'rgba(255,255,255,0.9)',
+                      border: '1px solid rgba(232,121,160,0.4)',
+                      fontFamily: '"Caveat", cursive',
+                      fontSize: 14,
+                    }}
+                    value={content.from}
+                    onChange={e => onUpdate({ content: { ...content, from: e.target.value } })}
+                    onBlur={() => setEditingFrom(false)}
+                    onKeyDown={e => e.key === 'Enter' && setEditingFrom(false)}
+                  />
+                ) : (
+                  <button
+                    className="rounded-xl px-2 py-1.5 text-sm text-left"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      color: content.from ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)',
+                      border: '1px dashed rgba(232,121,160,0.3)',
+                      fontFamily: '"Caveat", cursive',
+                      fontSize: 14,
+                    }}
+                    onClick={() => setEditingFrom(true)}
+                  >
+                    {content.from || '點擊填寫名字…'}
+                  </button>
+                )}
               </motion.div>
             )}
-          </div>
-        </motion.div>
-
-        {/* ── Edit mode：浮動編輯列 ────────────────── */}
-        <AnimatePresence>
-          {isEditMode && isSelected && (
-            <motion.div
-              data-no-drag
-              className="absolute left-1/2 -translate-x-1/2 flex flex-col gap-1.5 p-2 rounded-2xl"
-              style={{
-                top: 'calc(100% + 10px)',
-                background: 'rgba(8,6,24,0.97)',
-                border: '1px solid rgba(232,121,160,0.3)',
-                backdropFilter: 'blur(20px)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                width: Math.max(widget.width, 220),
-                zIndex: 50,
-              }}
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.97 }}
-              onMouseDown={block}
-              onPointerDown={block}
-            >
-              {/* 信件內容 */}
-              <label style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>信件內容</label>
-              {editingMsg ? (
-                <textarea
-                  autoFocus
-                  className="rounded-xl px-2 py-1.5 text-sm outline-none resize-none"
-                  style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    color: 'rgba(255,255,255,0.9)',
-                    border: '1px solid rgba(232,121,160,0.4)',
-                    fontFamily: '"Caveat", cursive',
-                    fontSize: 14,
-                    minHeight: 80,
-                  }}
-                  value={content.message}
-                  onChange={e => onUpdate({ content: { ...content, message: e.target.value } })}
-                  onBlur={() => setEditingMsg(false)}
-                />
-              ) : (
-                <button
-                  className="rounded-xl px-2 py-1.5 text-sm text-left"
-                  style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    color: content.message ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)',
-                    border: '1px dashed rgba(232,121,160,0.3)',
-                    fontFamily: '"Caveat", cursive',
-                    fontSize: 14,
-                    minHeight: 36,
-                  }}
-                  onClick={() => setEditingMsg(true)}
-                >
-                  {content.message || '點擊填寫信件內容…'}
-                </button>
-              )}
-
-              {/* 署名 */}
-              <label style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>署名（寄件人）</label>
-              {editingFrom ? (
-                <input
-                  autoFocus
-                  className="rounded-xl px-2 py-1.5 text-sm outline-none"
-                  style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    color: 'rgba(255,255,255,0.9)',
-                    border: '1px solid rgba(232,121,160,0.4)',
-                    fontFamily: '"Caveat", cursive',
-                    fontSize: 14,
-                  }}
-                  value={content.from}
-                  onChange={e => onUpdate({ content: { ...content, from: e.target.value } })}
-                  onBlur={() => setEditingFrom(false)}
-                  onKeyDown={e => e.key === 'Enter' && setEditingFrom(false)}
-                />
-              ) : (
-                <button
-                  className="rounded-xl px-2 py-1.5 text-sm text-left"
-                  style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    color: content.from ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)',
-                    border: '1px dashed rgba(232,121,160,0.3)',
-                    fontFamily: '"Caveat", cursive',
-                    fontSize: 14,
-                  }}
-                  onClick={() => setEditingFrom(true)}
-                >
-                  {content.from || '點擊填寫名字…'}
-                </button>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </BaseWidget>
+          </AnimatePresence>
+        </div>
+      </BaseWidget>
+    </>
   )
 }

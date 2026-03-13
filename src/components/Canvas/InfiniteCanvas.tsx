@@ -1,5 +1,5 @@
 // ============================================================
-// InfiniteCanvas v4 - 正確 pinch-to-zoom（繞捏合中心縮放）
+// InfiniteCanvas v5 - Better UX: left-click drag pan + touch inertia
 // ============================================================
 
 import { useRef, useState, useCallback, useEffect } from 'react'
@@ -23,39 +23,49 @@ interface Props {
   onDuplicateWidget: (id: string) => void
   onBringToFront: (id: string) => void
   onCanvasRef: (ref: HTMLDivElement | null) => void
-  onRegisterReset?: (fn: () => void) => void  // C2
+  onRegisterReset?: (fn: () => void) => void
 }
 
 const SCALE_MIN = 0.25
 const SCALE_MAX = 3
+const PAN_THRESHOLD = 5 // px before left-click becomes a pan
 
 export function InfiniteCanvas({
   widgets, mode, theme,
   onUpdateWidget, onDeleteWidget, onDuplicateWidget, onBringToFront, onCanvasRef, onRegisterReset,
 }: Props) {
   // ── Transform state ──────────────────────────────────────
-  // viewX/viewY = 畫布左上角 (0,0) 在螢幕座標的位置
-  // 初始讓畫布中心 (2000,2000) 對齊螢幕中心
   const initT = (): Transform => ({
     viewX: window.innerWidth  / 2 - 2000,
     viewY: window.innerHeight / 2 - 2000,
     scale: 1,
   })
-  const tRef = useRef<Transform>(initT())           // 永遠是最新值，給事件 handler 讀取
-  const [t, setT] = useState<Transform>(tRef.current) // React 渲染用
+  const tRef = useRef<Transform>(initT())
+  const [t, setT] = useState<Transform>(tRef.current)
+  const [isMousePanning, setIsMousePanning] = useState(false)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // ── Refs ─────────────────────────────────────────────────
-  const isPanning      = useRef(false)
-  const panStart       = useRef({ x: 0, y: 0 })
-  const panStartT      = useRef<Transform>(tRef.current)
-  const lastTouch      = useRef<{ x: number; y: number } | null>(null)
-  const lastPinchDist  = useRef<number | null>(null)
-  const lastPinchMid   = useRef<{ x: number; y: number } | null>(null)
+  const isPanning         = useRef(false)
+  const leftClickMayPan   = useRef(false)   // left-drag pan pending threshold
+  const panStart          = useRef({ x: 0, y: 0 })
+  const panStartT         = useRef<Transform>(tRef.current)
+  const lastTouch         = useRef<{ x: number; y: number } | null>(null)
+  const lastPinchDist     = useRef<number | null>(null)
+  const lastPinchMid      = useRef<{ x: number; y: number } | null>(null)
+  // Touch inertia
+  const touchVel          = useRef({ x: 0, y: 0 })
+  const touchVelTime      = useRef(0)
+  const inertiaRaf        = useRef<number | null>(null)
 
   const selectedWidget = widgets.find(w => w.id === selectedId) || null
   const isEditMode     = mode === 'edit'
+
+  // Cleanup inertia on unmount
+  useEffect(() => {
+    return () => { if (inertiaRaf.current) cancelAnimationFrame(inertiaRaf.current) }
+  }, [])
 
   // C2: reset viewport — fit all widgets or go to canvas center
   useEffect(() => {
@@ -128,25 +138,46 @@ export function InfiniteCanvas({
   // ── 滑鼠事件 ─────────────────────────────────────────────
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      // Middle click or Alt+left: start panning immediately
       e.preventDefault()
       isPanning.current = true
+      setIsMousePanning(true)
       panStart.current  = { x: e.clientX, y: e.clientY }
       panStartT.current = { ...tRef.current }
+    } else if (e.button === 0 && !e.altKey) {
+      // Left click: record potential pan start (activates after threshold)
+      leftClickMayPan.current = true
+      panStart.current  = { x: e.clientX, y: e.clientY }
+      panStartT.current = { ...tRef.current }
+      setSelectedId(null)
     }
-    if (e.button === 0 && !e.altKey) setSelectedId(null)
   }, [])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isPanning.current) return
-    const dx = e.clientX - panStart.current.x
-    const dy = e.clientY - panStart.current.y
-    const base = panStartT.current
-    const next: Transform = { viewX: base.viewX + dx, viewY: base.viewY + dy, scale: base.scale }
-    tRef.current = next
-    setT(next)
+    if (isPanning.current) {
+      const dx = e.clientX - panStart.current.x
+      const dy = e.clientY - panStart.current.y
+      const base = panStartT.current
+      const next: Transform = { viewX: base.viewX + dx, viewY: base.viewY + dy, scale: base.scale }
+      tRef.current = next
+      setT(next)
+    } else if (leftClickMayPan.current) {
+      const dx = e.clientX - panStart.current.x
+      const dy = e.clientY - panStart.current.y
+      if (Math.hypot(dx, dy) > PAN_THRESHOLD) {
+        // Threshold crossed: upgrade to active pan
+        isPanning.current = true
+        leftClickMayPan.current = false
+        setIsMousePanning(true)
+      }
+    }
   }, [])
 
-  const handleMouseUp  = useCallback(() => { isPanning.current = false }, [])
+  const handleMouseUp = useCallback(() => {
+    isPanning.current = false
+    leftClickMayPan.current = false
+    setIsMousePanning(false)
+  }, [])
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
@@ -156,6 +187,14 @@ export function InfiniteCanvas({
 
   // ── 觸控事件 ─────────────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // Cancel any running inertia when a new touch begins
+    if (inertiaRaf.current) {
+      cancelAnimationFrame(inertiaRaf.current)
+      inertiaRaf.current = null
+    }
+    touchVel.current = { x: 0, y: 0 }
+    touchVelTime.current = performance.now()
+
     if (e.touches.length === 1) {
       lastTouch.current     = { x: e.touches[0].clientX, y: e.touches[0].clientY }
       lastPinchDist.current = null
@@ -182,23 +221,34 @@ export function InfiniteCanvas({
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2
 
-      // 捏合縮放（繞當前捏合中心）
       const ratio = dist / lastPinchDist.current
       applyZoom(ratio, midX, midY)
 
-      // 捏合平移（兩指中心的移動量）
       const panDx = midX - lastPinchMid.current.x
       const panDy = midY - lastPinchMid.current.y
       if (Math.abs(panDx) + Math.abs(panDy) > 0.5) applyPan(panDx, panDy)
 
       lastPinchDist.current = dist
       lastPinchMid.current  = { x: midX, y: midY }
+      touchVel.current = { x: 0, y: 0 } // reset velocity during pinch
 
     } else if (e.touches.length === 1 && lastTouch.current !== null) {
-      // 單指平移
+      // 單指平移 + 速度追蹤（慣性用）
       const panDx = e.touches[0].clientX - lastTouch.current.x
       const panDy = e.touches[0].clientY - lastTouch.current.y
       applyPan(panDx, panDy)
+
+      // Track velocity for inertia (exponential moving average)
+      const now = performance.now()
+      const dt = now - touchVelTime.current
+      if (dt > 0 && dt < 100) {
+        const alpha = 0.6
+        touchVel.current = {
+          x: touchVel.current.x * (1 - alpha) + (panDx / dt * 16) * alpha,
+          y: touchVel.current.y * (1 - alpha) + (panDy / dt * 16) * alpha,
+        }
+      }
+      touchVelTime.current = now
       lastTouch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     }
   }, [applyZoom, applyPan])
@@ -209,11 +259,31 @@ export function InfiniteCanvas({
       lastPinchDist.current = null
       lastPinchMid.current  = null
     } else if (e.touches.length === 0) {
+      // All fingers lifted: start inertia if velocity is significant
+      const vel = touchVel.current
+      const speed = Math.hypot(vel.x, vel.y)
+      if (speed > 1) {
+        const decay = 0.93
+        const inertiaFn = () => {
+          touchVel.current = {
+            x: touchVel.current.x * decay,
+            y: touchVel.current.y * decay,
+          }
+          if (Math.hypot(touchVel.current.x, touchVel.current.y) < 0.3) {
+            inertiaRaf.current = null
+            return
+          }
+          applyPan(touchVel.current.x, touchVel.current.y)
+          inertiaRaf.current = requestAnimationFrame(inertiaFn)
+        }
+        inertiaRaf.current = requestAnimationFrame(inertiaFn)
+      }
+      touchVel.current      = { x: 0, y: 0 }
       lastTouch.current     = null
       lastPinchDist.current = null
       lastPinchMid.current  = null
     }
-  }, [])
+  }, [applyPan])
 
   const commonProps = (w: Widget) => ({
     widget: w,
@@ -229,7 +299,11 @@ export function InfiniteCanvas({
     <>
       <div
         className="fixed inset-0 overflow-hidden select-none"
-        style={{ zIndex: 1, touchAction: 'none' }}
+        style={{
+          zIndex: 1,
+          touchAction: 'none',
+          cursor: isMousePanning ? 'grabbing' : 'grab',
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -252,19 +326,18 @@ export function InfiniteCanvas({
         >
           <GridOverlay isVisible={isEditMode} accentColor={theme.accent} />
 
-          {/* 將 scale 注入 Context，讓 BaseWidget 換算拖曳位移 */}
           <CanvasScaleContext.Provider value={t.scale}>
             {[...widgets].sort((a, b) => a.zIndex - b.zIndex).map(w => {
               const p = commonProps(w)
               switch (w.type) {
-                case 'photo':   return <PhotoWidget   key={w.id} {...p} />
-                case 'sticker': return <StickerWidget key={w.id} {...p} />
-                case 'timer':   return <TimerWidget   key={w.id} {...p} />
-                case 'weather': return <WeatherWidget key={w.id} {...p} />
-                case 'video':   return <VideoWidget   key={w.id} {...p} />
-                case 'drawing':    return <DrawingWidget  key={w.id} {...p} />
+                case 'photo':     return <PhotoWidget    key={w.id} {...p} />
+                case 'sticker':   return <StickerWidget  key={w.id} {...p} />
+                case 'timer':     return <TimerWidget    key={w.id} {...p} />
+                case 'weather':   return <WeatherWidget  key={w.id} {...p} />
+                case 'video':     return <VideoWidget    key={w.id} {...p} />
+                case 'drawing':   return <DrawingWidget  key={w.id} {...p} />
                 case 'love-note': return <LoveNoteWidget key={w.id} {...p} />
-                default:        return null
+                default:          return null
               }
             })}
           </CanvasScaleContext.Provider>
