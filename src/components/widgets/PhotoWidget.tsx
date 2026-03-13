@@ -9,7 +9,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, ZoomIn, X } from 'lucide-react'
 import type { Widget, PhotoContent, PhotoStyle } from '../../types'
 import { BaseWidget } from './BaseWidget'
-import { uploadFile, isSupabaseConfigured } from '../../lib/supabase'
 
 interface Props {
   widget: Widget
@@ -36,12 +35,23 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
-    let url: string | null = null
-    if (isSupabaseConfigured) url = await uploadFile(file, widget.space_id, 'photos')
-    if (!url) url = await compressImage(file)
-    if (url) onUpdate({ content: { ...content, imageUrl: url } })
-    setUploading(false)
-    e.target.value = ''
+    try {
+      // Always compress to local base64 first — works offline, no bucket permission issues
+      // Use the ☁️ toolbar sync button to upload to cloud for cross-device sharing
+      const url = await compressImage(file)
+      onUpdate({ content: { ...content, imageUrl: url } })
+    } catch {
+      // Canvas compression failed — fall back to plain FileReader (no resize)
+      try {
+        const url = await fileToBase64(file)
+        onUpdate({ content: { ...content, imageUrl: url } })
+      } catch (err) {
+        console.error('Photo upload failed:', err)
+      }
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
   }
 
   const isRound = content.style === 'round'
@@ -212,17 +222,28 @@ function compressImage(file: File, maxWidth = 1200, quality = 0.85): Promise<str
     const img = new Image()
     const objectUrl = URL.createObjectURL(file)
     img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
       const scale = Math.min(1, maxWidth / img.width)
       const canvas = document.createElement('canvas')
       canvas.width  = Math.round(img.width  * scale)
       canvas.height = Math.round(img.height * scale)
       const ctx = canvas.getContext('2d')
-      if (!ctx) { resolve(objectUrl); return }
+      if (!ctx) { reject(new Error('canvas context unavailable')); return }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      URL.revokeObjectURL(objectUrl)
-      resolve(canvas.toDataURL('image/jpeg', quality))
+      const dataUrl = canvas.toDataURL('image/jpeg', quality)
+      if (!dataUrl || dataUrl === 'data:,') { reject(new Error('canvas toDataURL failed')); return }
+      resolve(dataUrl)
     }
     img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('image load failed')) }
     img.src = objectUrl
+  })
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result as string)
+    r.onerror = reject
+    r.readAsDataURL(file)
   })
 }
