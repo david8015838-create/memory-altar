@@ -38,7 +38,7 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
     setUploading(true)
     let url: string | null = null
     if (isSupabaseConfigured) url = await uploadFile(file, widget.space_id, 'photos')
-    if (!url) url = await fileToBase64(file)
+    if (!url) url = await compressImage(file)
     if (url) onUpdate({ content: { ...content, imageUrl: url } })
     setUploading(false)
     e.target.value = ''
@@ -206,11 +206,23 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
   )
 }
 
-function fileToBase64(file: File): Promise<string> {
+/** Compress image to JPEG, max 1200px wide, quality 0.85 — prevents localStorage overflow */
+function compressImage(file: File, maxWidth = 1200, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(r.result as string)
-    r.onerror = reject
-    r.readAsDataURL(file)
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width)
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width  * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { resolve(objectUrl); return }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(objectUrl)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('image load failed')) }
+    img.src = objectUrl
   })
 }

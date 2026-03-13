@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Video, Pen, LogOut, Trash2, Sparkles, X, CloudUpload, MoreHorizontal, Locate, Mail } from 'lucide-react'
+import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Video, Pen, LogOut, Trash2, Sparkles, X, CloudUpload, MoreHorizontal, Locate, Mail, Bookmark } from 'lucide-react'
 import type { AppMode, Theme, ThemeName, WidgetType } from '../../types'
 import { THEMES } from '../../constants/themes'
 
@@ -21,7 +21,8 @@ interface Props {
   onLogout: () => void
   onDeleteRoom: () => void
   onSync: () => Promise<{ synced: number; failed: number }>
-  onResetView: () => void  // C2
+  onResetView: () => void
+  onSetHomeView: () => void
   effects: EffectsState
 }
 
@@ -43,13 +44,14 @@ const EFFECTS_CONFIG = [
   { key: 'firefly' as const, emoji: '🌟', label: '螢火蟲' },
 ]
 
-export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAddDrawing, onThemeChange, onLogout, onDeleteRoom, onSync, onResetView, effects }: Props) {
+export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAddDrawing, onThemeChange, onLogout, onDeleteRoom, onSync, onResetView, onSetHomeView, effects }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [showTheme, setShowTheme] = useState(false)
   const [showEffects, setShowEffects] = useState(false)
   const [showMore, setShowMore] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [homeSet, setHomeSet] = useState(false)
   const isEditMode = mode === 'edit'
 
   const anyEffectActive = Object.values(effects).some(e => e.active)
@@ -206,7 +208,7 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
           </motion.button>
         )}
 
-        {/* C2: 回到中心按鈕 */}
+        {/* 回到中心按鈕 */}
         <motion.button
           className="p-1.5 rounded-xl"
           style={{ color: 'var(--text-secondary)' }}
@@ -215,6 +217,22 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
           onClick={() => { onResetView(); closeAll() }}
         >
           <Locate size={13} />
+        </motion.button>
+
+        {/* 設為首頁視野 */}
+        <motion.button
+          className="p-1.5 rounded-xl"
+          style={{ color: homeSet ? theme.accent : 'var(--text-secondary)' }}
+          whileTap={{ scale: 0.95 }}
+          title="設為首頁視野（下次進來從這裡開始）"
+          onClick={() => {
+            onSetHomeView()
+            setHomeSet(true)
+            setTimeout(() => setHomeSet(false), 1800)
+            closeAll()
+          }}
+        >
+          <Bookmark size={13} fill={homeSet ? theme.accent : 'none'} />
         </motion.button>
 
         {/* 連線狀態 */}

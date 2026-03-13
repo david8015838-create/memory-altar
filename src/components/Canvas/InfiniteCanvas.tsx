@@ -24,6 +24,9 @@ interface Props {
   onBringToFront: (id: string) => void
   onCanvasRef: (ref: HTMLDivElement | null) => void
   onRegisterReset?: (fn: () => void) => void
+  initialTransform?: { viewX: number; viewY: number; scale: number }
+  onRegisterGetCenter?: (fn: () => { x: number; y: number }) => void
+  onRegisterGetViewport?: (fn: () => { viewX: number; viewY: number; scale: number }) => void
 }
 
 const SCALE_MIN = 0.25
@@ -33,9 +36,10 @@ const PAN_THRESHOLD = 5 // px before left-click becomes a pan
 export function InfiniteCanvas({
   widgets, mode, theme,
   onUpdateWidget, onDeleteWidget, onDuplicateWidget, onBringToFront, onCanvasRef, onRegisterReset,
+  initialTransform, onRegisterGetCenter, onRegisterGetViewport,
 }: Props) {
   // ── Transform state ──────────────────────────────────────
-  const initT = (): Transform => ({
+  const initT = (): Transform => initialTransform ?? ({
     viewX: window.innerWidth  / 2 - 2000,
     viewY: window.innerHeight / 2 - 2000,
     scale: 1,
@@ -66,6 +70,24 @@ export function InfiniteCanvas({
   useEffect(() => {
     return () => { if (inertiaRaf.current) cancelAnimationFrame(inertiaRaf.current) }
   }, [])
+
+  // Expose live viewport center in canvas coords (for widget spawn position)
+  useEffect(() => {
+    if (!onRegisterGetCenter) return
+    onRegisterGetCenter(() => {
+      const { viewX, viewY, scale } = tRef.current
+      return {
+        x: (window.innerWidth  / 2 - viewX) / scale,
+        y: (window.innerHeight / 2 - viewY) / scale,
+      }
+    })
+  }, [onRegisterGetCenter])
+
+  // Expose current transform (for "set home view" feature)
+  useEffect(() => {
+    if (!onRegisterGetViewport) return
+    onRegisterGetViewport(() => ({ ...tRef.current }))
+  }, [onRegisterGetViewport])
 
   // C2: reset viewport — fit all widgets or go to canvas center
   useEffect(() => {

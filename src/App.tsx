@@ -42,8 +42,26 @@ export default function App() {
   const [isSnowActive,    setIsSnowActive]    = useState(false)
   const [isFireflyActive, setIsFireflyActive] = useState(false)
 
-  const canvasRef = useRef<HTMLDivElement | null>(null)
-  const resetViewRef = useRef<(() => void) | null>(null) // C2
+  const canvasRef       = useRef<HTMLDivElement | null>(null)
+  const resetViewRef    = useRef<(() => void) | null>(null)
+  const getCenterRef    = useRef<(() => { x: number; y: number }) | null>(null)
+  const getViewportRef  = useRef<(() => { viewX: number; viewY: number; scale: number }) | null>(null)
+
+  const vpKey = useCallback((pageId: string) =>
+    `memory-altar-vp-${spaceId}-${pageId}`, [spaceId])
+
+  const loadInitialViewport = useCallback((pageId: string) => {
+    if (!pageId || !spaceId) return undefined
+    try {
+      const saved = localStorage.getItem(vpKey(pageId))
+      return saved ? JSON.parse(saved) as { viewX: number; viewY: number; scale: number } : undefined
+    } catch { return undefined }
+  }, [spaceId, vpKey])
+
+  const handleSetHomeView = useCallback(() => {
+    if (!getViewportRef.current || !currentPageId) return
+    localStorage.setItem(vpKey(currentPageId), JSON.stringify(getViewportRef.current()))
+  }, [currentPageId, vpKey])
 
   // ── Keepalive：每 4 分鐘 ping 一次
   useEffect(() => {
@@ -74,10 +92,13 @@ export default function App() {
     if (ok) logout()
   }
 
-  const getCanvasCenter = useCallback(() => ({
-    x: 2000 - window.innerWidth / 2 + window.innerWidth * 0.3 + (Math.random() - 0.5) * 200,
-    y: 2000 - window.innerHeight / 2 + window.innerHeight * 0.3 + (Math.random() - 0.5) * 200,
-  }), [])
+  const getCanvasCenter = useCallback(() => {
+    if (getCenterRef.current) {
+      const c = getCenterRef.current()
+      return { x: c.x + (Math.random() - 0.5) * 60, y: c.y + (Math.random() - 0.5) * 60 }
+    }
+    return { x: 2000, y: 2000 }
+  }, [])
 
   const handleAddWidget = (type: WidgetType) => addWidget(type, getCanvasCenter())
 
@@ -124,6 +145,7 @@ export default function App() {
       {/* 無限畫布 */}
       {!showDrawingCanvas && currentPageId && (
         <InfiniteCanvas
+          key={currentPageId}
           widgets={widgets}
           mode={mode}
           theme={theme}
@@ -133,6 +155,9 @@ export default function App() {
           onBringToFront={bringToFront}
           onCanvasRef={r => { canvasRef.current = r }}
           onRegisterReset={fn => { resetViewRef.current = fn }}
+          initialTransform={loadInitialViewport(currentPageId)}
+          onRegisterGetCenter={fn => { getCenterRef.current = fn }}
+          onRegisterGetViewport={fn => { getViewportRef.current = fn }}
         />
       )}
 
@@ -148,6 +173,7 @@ export default function App() {
           onDeleteRoom={() => setShowDeleteConfirm(true)}
           onSync={syncToCloud}
           onResetView={() => resetViewRef.current?.()}
+          onSetHomeView={handleSetHomeView}
           effects={{
             petal:   { active: isPetalActive,   onToggle: () => setIsPetalActive(v => !v) },
             whisper: { active: isWhisperActive, onToggle: () => setIsWhisperActive(v => !v) },
