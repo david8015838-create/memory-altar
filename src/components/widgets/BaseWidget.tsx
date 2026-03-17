@@ -228,7 +228,7 @@ export function BaseWidget({
         rotate: widget.rotation,
         zIndex: isSelected ? 9000 : widget.zIndex,
         cursor: isEditMode ? (isLocked ? 'default' : isDragging ? 'grabbing' : 'grab') : 'default',
-        touchAction: isEditMode ? 'none' : 'auto',
+        touchAction: 'none',
       }}
       onMouseDown={(e) => { if (isEditMode) e.stopPropagation() }}
       onPointerDown={handlePointerDown}
