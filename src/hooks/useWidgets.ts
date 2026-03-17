@@ -1,5 +1,5 @@
 // ============================================================
-// useWidgets v4 - A3 undo debounce race fix + A4 timer cleanup
+// useWidgets v5 - debounced localStorage + realtime null-content guard
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -14,7 +14,17 @@ function loadLocal(spaceId: string): Widget[] {
   try { return JSON.parse(localStorage.getItem(LOCAL_KEY(spaceId)) || '[]') } catch { return [] }
 }
 function saveLocal(spaceId: string, widgets: Widget[]) {
-  try { localStorage.setItem(LOCAL_KEY(spaceId), JSON.stringify(widgets)) } catch { /* ignore */ }
+  try {
+    localStorage.setItem(LOCAL_KEY(spaceId), JSON.stringify(widgets))
+  } catch (e) {
+    // QuotaExceededError — localStorage 已滿；資料仍在記憶體中，不影響當前操作
+    // 可觸發雲端同步來清理 base64 大圖
+    if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+      console.warn('[saveLocal] localStorage quota exceeded — use cloud sync to free space')
+    } else {
+      console.warn('[saveLocal] unexpected error:', e)
+    }
+  }
 }
 
 export function useWidgets(spaceId: string, currentPageId: string) {
@@ -31,6 +41,18 @@ export function useWidgets(spaceId: string, currentPageId: string) {
 
   // 過濾出當前頁面的 widgets
   const widgets = allWidgets.filter(w => w.page_id === currentPageId)
+
+  // ── 防抖 localStorage 寫入：避免每次 drag 事件都 JSON.stringify 大量資料
+  // 重要：isLoading 中或空陣列絕對不寫，防止在 init 完成前把資料清空
+  const localSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!spaceId || isLoading || allWidgets.length === 0) return
+    if (localSaveTimer.current) clearTimeout(localSaveTimer.current)
+    localSaveTimer.current = setTimeout(() => {
+      saveLocal(spaceId, allWidgets)
+    }, 400)
+    return () => { if (localSaveTimer.current) clearTimeout(localSaveTimer.current) }
+  }, [allWidgets, spaceId, isLoading])
 
   useEffect(() => {
     if (!spaceId) return
@@ -74,15 +96,16 @@ export function useWidgets(spaceId: string, currentPageId: string) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'widgets', filter: `space_id=eq.${spaceId}` },
         (payload) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            // Guard: Supabase realtime message size limit can cause content to be null
+            // This would crash widget components and unmount the entire tree
+            if (!payload.new?.content) return
             const w = { ...payload.new, zIndex: payload.new.z_index } as Widget
             setAllWidgets(prev => {
               const exists = prev.find(x => x.id === w.id)
-              const next = exists ? prev.map(x => x.id === w.id ? w : x) : [...prev, w]
-              saveLocal(spaceId, next)
-              return next
+              return exists ? prev.map(x => x.id === w.id ? w : x) : [...prev, w]
             })
           } else if (payload.eventType === 'DELETE') {
-            setAllWidgets(prev => { const next = prev.filter(x => x.id !== payload.old.id); saveLocal(spaceId, next); return next })
+            setAllWidgets(prev => prev.filter(x => x.id !== payload.old.id))
           }
         })
       .subscribe()
@@ -90,7 +113,27 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   }, [spaceId])
 
   // A4: cleanup all timers on unmount
-  useEffect(() => () => { saveTimers.current.forEach(clearTimeout); saveTimers.current.clear() }, [])
+  useEffect(() => () => {
+    saveTimers.current.forEach(clearTimeout)
+    saveTimers.current.clear()
+    if (localSaveTimer.current) clearTimeout(localSaveTimer.current)
+  }, [])
+
+  // iOS PWA recovery: 當 app 從背景返回（例如選完照片後），
+  // 如果 allWidgets 意外變空，從 localStorage 恢復
+  useEffect(() => {
+    if (!spaceId) return
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return
+      if (allWidgetsRef.current.length > 0) return  // 有內容就不需要恢復
+      const local = loadLocal(spaceId)
+      if (local.length > 0) {
+        setAllWidgets(local)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [spaceId])
 
   const debouncedSave = useCallback((widget: Widget) => {
     const t = saveTimers.current.get(widget.id)
@@ -145,7 +188,7 @@ export function useWidgets(spaceId: string, currentPageId: string) {
       content: getDefaultContent(type),
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }
-    setAllWidgets(prev => { const next = [...prev, w]; saveLocal(spaceId, next); return next })
+    setAllWidgets(prev => [...prev, w])
     if (isSupabaseConfigured) saveWidget(w)
     return w.id
   }, [spaceId, currentPageId])
@@ -153,16 +196,15 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   const updateWidget = useCallback((id: string, changes: Partial<Widget>) => {
     setAllWidgets(prev => {
       const next = prev.map(w => w.id === id ? { ...w, ...changes, updated_at: new Date().toISOString() } : w)
-      saveLocal(spaceId, next)
       const updated = next.find(w => w.id === id)
       if (updated) debouncedSave(updated)
       return next
     })
-  }, [spaceId, debouncedSave])
+  }, [debouncedSave])
 
   const deleteWidget = useCallback((id: string) => {
     snapshot()
-    setAllWidgets(prev => { const next = prev.filter(w => w.id !== id); saveLocal(spaceId, next); return next })
+    setAllWidgets(prev => prev.filter(w => w.id !== id))
     if (isSupabaseConfigured) dbDelete(id)
   }, [spaceId])
 
@@ -177,7 +219,7 @@ export function useWidgets(spaceId: string, currentPageId: string) {
       zIndex: maxZ + 1,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }
-    setAllWidgets(prev => { const next = [...prev, copy]; saveLocal(spaceId, next); return next })
+    setAllWidgets(prev => [...prev, copy])
     if (isSupabaseConfigured) saveWidget(copy)
   }, [spaceId])
 
@@ -185,12 +227,11 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     setAllWidgets(prev => {
       const maxZ = Math.max(...prev.map(w => w.zIndex))
       const next = prev.map(w => w.id === id ? { ...w, zIndex: maxZ + 1 } : w)
-      saveLocal(spaceId, next)
       const updated = next.find(w => w.id === id)
       if (updated) debouncedSave(updated)
       return next
     })
-  }, [spaceId, debouncedSave])
+  }, [debouncedSave])
 
   /** 雲端同步：將所有 base64 media 上傳到 Storage，再強制寫入 DB */
   const syncToCloud = useCallback(async (): Promise<{ synced: number; failed: number }> => {

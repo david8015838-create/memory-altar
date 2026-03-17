@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function DrawingWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
-  const content = widget.content as DrawingContent
+  const content = (widget.content ?? { imageUrl: null, caption: '', showBorder: true }) as DrawingContent
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [editingCaption, setEditingCaption] = useState(false)
 

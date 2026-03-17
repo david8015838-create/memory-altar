@@ -20,7 +20,7 @@ const COLOR_PRESETS = [
 const FONT_SIZES = [14, 18, 24, 32]
 
 export function StickerWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
-  const content = widget.content as StickerContent
+  const content = (widget.content ?? { text: '', fontSize: 18, color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.12)', showBorder: true }) as StickerContent
   const [isEditing, setIsEditing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 

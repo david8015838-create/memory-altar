@@ -23,7 +23,7 @@ function calcDiff(startDate: string) {
 }
 
 export function TimerWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
-  const content = widget.content as TimerContent
+  const content = (widget.content ?? { title: '在一起', startDate: new Date().toISOString().split('T')[0], emoji: '💕' }) as TimerContent
   const [diff, setDiff] = useState(() => calcDiff(content.startDate))
 
   useEffect(() => {

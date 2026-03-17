@@ -20,7 +20,7 @@ interface Props {
 }
 
 export function LoveNoteWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
-  const content = widget.content as LoveNoteContent
+  const content = (widget.content ?? { message: '', from: '' }) as LoveNoteContent
   const [isOpen, setIsOpen] = useState(false)
   const [editingMsg, setEditingMsg] = useState(false)
   const [editingFrom, setEditingFrom] = useState(false)

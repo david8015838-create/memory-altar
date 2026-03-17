@@ -14,6 +14,7 @@ import { VideoWidget }   from '../widgets/VideoWidget'
 import { DrawingWidget }   from '../widgets/DrawingWidget'
 import { LoveNoteWidget } from '../widgets/LoveNoteWidget'
 import { WidgetActionBar } from '../ui/WidgetActionBar'
+import { WidgetErrorBoundary } from '../widgets/WidgetErrorBoundary'
 
 interface Transform { viewX: number; viewY: number; scale: number }
 interface Props {
@@ -351,16 +352,22 @@ export function InfiniteCanvas({
           <CanvasScaleContext.Provider value={t.scale}>
             {[...widgets].sort((a, b) => a.zIndex - b.zIndex).map(w => {
               const p = commonProps(w)
+              let child: React.ReactNode = null
               switch (w.type) {
-                case 'photo':     return <PhotoWidget    key={w.id} {...p} />
-                case 'sticker':   return <StickerWidget  key={w.id} {...p} />
-                case 'timer':     return <TimerWidget    key={w.id} {...p} />
-                case 'weather':   return <WeatherWidget  key={w.id} {...p} />
-                case 'video':     return <VideoWidget    key={w.id} {...p} />
-                case 'drawing':   return <DrawingWidget  key={w.id} {...p} />
-                case 'love-note': return <LoveNoteWidget key={w.id} {...p} />
+                case 'photo':     child = <PhotoWidget    {...p} />; break
+                case 'sticker':   child = <StickerWidget  {...p} />; break
+                case 'timer':     child = <TimerWidget    {...p} />; break
+                case 'weather':   child = <WeatherWidget  {...p} />; break
+                case 'video':     child = <VideoWidget    {...p} />; break
+                case 'drawing':   child = <DrawingWidget  {...p} />; break
+                case 'love-note': child = <LoveNoteWidget {...p} />; break
                 default:          return null
               }
+              return (
+                <WidgetErrorBoundary key={w.id} widgetId={w.id}>
+                  {child}
+                </WidgetErrorBoundary>
+              )
             })}
           </CanvasScaleContext.Provider>
         </div>

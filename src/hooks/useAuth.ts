@@ -22,18 +22,29 @@ export function useAuth() {
     async function restore() {
       const raw = localStorage.getItem(SESSION_KEY)
       if (raw) {
-        try {
-          const session: Session = JSON.parse(raw)
-          // 向後端確認空間仍存在且密碼一致（防止空間已刪除的舊 session）
-          const space = await getSpace(session.spaceId)
-          if (space && space.password_hash === session.passwordHash) {
-            setSpaceId(session.spaceId)
-            setStatus('authenticated')
-            return
+        let session: Session | null = null
+        try { session = JSON.parse(raw) } catch { /* invalid JSON */ }
+        if (session) {
+          // 立即顯示內容（樂觀登入）：不等 Supabase 驗證，先讓畫面出來
+          // 避免 iOS PWA 從背景返回時出現空白畫面
+          setSpaceId(session.spaceId)
+          setStatus('authenticated')
+
+          // 背景驗證：確認空間仍有效
+          try {
+            const space = await getSpace(session.spaceId)
+            if (!space || space.password_hash !== session.passwordHash) {
+              // 空間已刪除或密碼不符 → 登出
+              localStorage.removeItem(SESSION_KEY)
+              setSpaceId('')
+              setStatus('unauthenticated')
+            }
+            // 驗證通過 → 維持已登入狀態
+          } catch {
+            // 網路錯誤：維持樂觀登入（已在上面設定）
           }
-          // 空間不存在或密碼不符 → 清除舊 session
-          localStorage.removeItem(SESSION_KEY)
-        } catch { /* ignore parse errors */ }
+          return
+        }
       }
       setStatus('unauthenticated')
     }

@@ -2,7 +2,7 @@
 // App.tsx v3 - 整合認證、分頁、手繪 Modal、持續特效
 // ============================================================
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AppMode, WidgetType, ThemeName } from './types'
 import { useAuth } from './hooks/useAuth'
@@ -62,6 +62,24 @@ export default function App() {
     if (!getViewportRef.current || !currentPageId) return
     localStorage.setItem(vpKey(currentPageId), JSON.stringify(getViewportRef.current()))
   }, [currentPageId, vpKey])
+
+  // 切換分頁時的初始視野：優先用已存的視野，否則自動縮放顯示所有 widget
+  const pageInitialTransform = useMemo(() => {
+    const saved = loadInitialViewport(currentPageId)
+    if (saved) return saved
+    if (!currentPageId || widgets.length === 0) return undefined
+    const xs = widgets.flatMap(w => [w.x, w.x + w.width])
+    const ys = widgets.flatMap(w => [w.y, w.y + w.height])
+    const minX = Math.min(...xs), maxX = Math.max(...xs)
+    const minY = Math.min(...ys), maxY = Math.max(...ys)
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+    const pad = 80
+    const scaleX = (window.innerWidth  - pad * 2) / Math.max(maxX - minX, 1)
+    const scaleY = (window.innerHeight - pad * 2) / Math.max(maxY - minY, 1)
+    const scale  = Math.min(Math.max(Math.min(scaleX, scaleY), 0.25), 1)
+    return { viewX: window.innerWidth / 2 - cx * scale, viewY: window.innerHeight / 2 - cy * scale, scale }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPageId, loadInitialViewport])
 
   // ── Keepalive：每 4 分鐘 ping 一次
   useEffect(() => {
@@ -155,7 +173,7 @@ export default function App() {
           onBringToFront={bringToFront}
           onCanvasRef={r => { canvasRef.current = r }}
           onRegisterReset={fn => { resetViewRef.current = fn }}
-          initialTransform={loadInitialViewport(currentPageId)}
+          initialTransform={pageInitialTransform}
           onRegisterGetCenter={fn => { getCenterRef.current = fn }}
           onRegisterGetViewport={fn => { getViewportRef.current = fn }}
         />

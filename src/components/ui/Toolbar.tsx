@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Edit3, Eye, Plus, Camera, Type, Timer, Cloud, Wifi, WifiOff, Video, Pen, LogOut, Trash2, Sparkles, X, CloudUpload, MoreHorizontal, Locate, Mail, Bookmark } from 'lucide-react'
 import type { AppMode, Theme, ThemeName, WidgetType } from '../../types'
@@ -52,6 +52,7 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [homeSet, setHomeSet] = useState(false)
+  const syncMsgTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isEditMode = mode === 'edit'
 
   const anyEffectActive = Object.values(effects).some(e => e.active)
@@ -65,6 +66,9 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
+  // Cleanup syncMsg timer on unmount
+  useEffect(() => () => { if (syncMsgTimer.current) clearTimeout(syncMsgTimer.current) }, [])
+
   const handleSync = async () => {
     if (syncing) return
     closeAll()
@@ -76,7 +80,8 @@ export function Toolbar({ mode, theme, isOnline, onModeToggle, onAddWidget, onAd
     } catch { setSyncMsg('✗ 同步失敗') }
     finally {
       setSyncing(false)
-      setTimeout(() => setSyncMsg(null), 3500)
+      if (syncMsgTimer.current) clearTimeout(syncMsgTimer.current)
+      syncMsgTimer.current = setTimeout(() => setSyncMsg(null), 3500)
     }
   }
 

@@ -4,9 +4,9 @@
 // 每款都有下方說明文字
 // ============================================================
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, ZoomIn, X } from 'lucide-react'
+import { Camera, ZoomIn, X, RotateCcw } from 'lucide-react'
 import type { Widget, PhotoContent, PhotoStyle } from '../../types'
 import { BaseWidget } from './BaseWidget'
 
@@ -24,33 +24,50 @@ const STYLE_LABELS: Record<PhotoStyle, string> = {
   polaroid: '拍立得', square: '方框', round: '圓形', film: '底片'
 }
 
+// image/* 是跨平台最相容的寫法；額外加副檔名讓 iOS Files app 也能篩選到 .jpg 檔
+const ACCEPT = 'image/*,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif'
+
 export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
-  const content = widget.content as PhotoContent
+  const content = (widget.content ?? { imageUrl: null, caption: '', style: 'polaroid' }) as PhotoContent
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const [editingCaption, setEditingCaption] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
-    try {
-      // Always compress to local base64 first — works offline, no bucket permission issues
-      // Use the ☁️ toolbar sync button to upload to cloud for cross-device sharing
-      const url = await compressImage(file)
-      onUpdate({ content: { ...content, imageUrl: url } })
-    } catch {
-      // Canvas compression failed — fall back to plain FileReader (no resize)
+    setUploadError('')
+    let url: string | null = null
+
+    // 多段壓縮策略：逐步降低尺寸/品質直到 base64 < 700KB
+    const passes: [number, number][] = [
+      [1600, 0.88],   // 標準
+      [1200, 0.78],   // 大圖備援
+      [900,  0.68],   // 強壓縮
+      [600,  0.60],   // 最後手段
+    ]
+    for (const [maxW, q] of passes) {
       try {
-        const url = await fileToBase64(file)
-        onUpdate({ content: { ...content, imageUrl: url } })
-      } catch (err) {
-        console.error('Photo upload failed:', err)
+        const candidate = await compressToJpeg(file, maxW, q)
+        // base64 700KB ≈ 原始 525KB，對 localStorage 很安全
+        if (candidate.length <= 700_000) { url = candidate; break }
+        // 壓縮成功但仍偏大，繼續下一輪
+        if (!url) url = candidate  // 先記住，萬一後面都失敗
+      } catch {
+        // 這個參數組合失敗，繼續下一組
       }
-    } finally {
-      setUploading(false)
-      e.target.value = ''
     }
+
+    if (url) {
+      onUpdate({ content: { ...content, imageUrl: url } })
+    } else {
+      setUploadError('照片太大，請先用相冊裁切後再上傳')
+    }
+    setUploading(false)
+    e.target.value = ''
   }
 
   const isRound = content.style === 'round'
@@ -101,6 +118,8 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
                 <img src={content.imageUrl} alt={content.caption}
                   className="w-full h-full object-cover" draggable={false}
                   style={isRound ? { borderRadius: '50%' } : {}} />
+
+                {/* 瀏覽模式：點圖放大 */}
                 {!isEditMode && (
                   <button className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 active:opacity-100 transition-opacity"
                     style={{ background: 'rgba(0,0,0,0.25)' }}
@@ -108,22 +127,56 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
                     <ZoomIn size={24} className="text-white drop-shadow" />
                   </button>
                 )}
+
+                {/* 編輯 + 選取：更換按鈕 */}
+                {isEditMode && isSelected && (
+                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 10 }}
+                    onMouseDown={e => e.stopPropagation()}
+                    onPointerDown={e => e.stopPropagation()}>
+                    <label
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer"
+                      style={{ background: 'rgba(0,0,0,0.8)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)' }}
+                      onMouseDown={e => e.stopPropagation()}
+                      onPointerDown={e => e.stopPropagation()}>
+                      <RotateCcw size={10} /> 更換
+                      <input ref={fileInputRef} type="file" accept={ACCEPT}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        style={{ fontSize: 0 }}
+                        onChange={handleUpload} />
+                    </label>
+                  </div>
+                )}
               </>
             ) : (
-              <label className="w-full h-full flex flex-col items-center justify-center gap-2"
-                style={{ color: '#888', cursor: isEditMode ? 'pointer' : 'default' }}>
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2"
+                style={{ color: '#888' }}>
                 {uploading ? (
                   <motion.div className="w-5 h-5 border-2 border-gray-500 border-t-white rounded-full"
                     animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
                 ) : (
-                  <><Camera size={24} />{isEditMode && <span className="text-xs">點擊上傳</span>}</>
+                  <>
+                    <Camera size={24} />
+                    {uploadError && (
+                      <p style={{ fontSize: 10, color: '#fb923c', textAlign: 'center', padding: '0 8px' }}>
+                        {uploadError}
+                      </p>
+                    )}
+                    {isEditMode && (
+                      <label
+                        className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer"
+                        style={{ background: 'rgba(255,255,255,0.08)', color: '#aaa', border: '1px solid rgba(255,255,255,0.12)' }}
+                        onMouseDown={e => e.stopPropagation()}
+                        onPointerDown={e => e.stopPropagation()}>
+                        點擊上傳照片
+                        <input type="file" accept={ACCEPT}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          style={{ fontSize: 0 }}
+                          onChange={handleUpload} />
+                      </label>
+                    )}
+                  </>
                 )}
-                {isEditMode && !uploading && (
-                  <input type="file" accept="image/*"
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', fontSize: 0 }}
-                    onChange={handleUpload} />
-                )}
-              </label>
+              </div>
             )}
           </div>
 
@@ -164,7 +217,6 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
           <div
             className="absolute -top-9 left-0 flex gap-1"
             style={{ zIndex: 20 }}
-            // 阻止事件冒泡到 BaseWidget，否則點按鈕會觸發取消選取
             onMouseDown={e => e.stopPropagation()}
             onMouseUp={e => e.stopPropagation()}
             onPointerDown={e => e.stopPropagation()}
@@ -177,7 +229,7 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
                   background: content.style === s ? 'var(--accent)' : 'rgba(0,0,0,0.85)',
                   color: content.style === s ? '#fff' : 'var(--text-secondary)',
                   border: '1px solid var(--glass-border)',
-                  minHeight: 28, // 手機觸控目標
+                  minHeight: 28,
                 }}
                 onClick={e => {
                   e.stopPropagation()
@@ -216,22 +268,47 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
   )
 }
 
-/** Compress image to JPEG, max 1200px wide, quality 0.85 — prevents localStorage overflow */
-function compressImage(file: File, maxWidth = 1200, quality = 0.85): Promise<string> {
+/**
+ * 將任意圖片壓縮成 JPEG base64，最大 1600px 寬，品質 0.88
+ * 支援 JPEG / PNG / WebP / GIF / HEIC（iOS Safari 自動解碼 HEIC）
+ * 同時修正 EXIF 旋轉方向（canvas 不會自動套用 EXIF）
+ */
+async function compressToJpeg(file: File, maxWidth = 1600, quality = 0.88): Promise<string> {
+  // 讀取 EXIF 旋轉資訊
+  const orientation = await readExifOrientation(file)
+
   return new Promise((resolve, reject) => {
     const img = new Image()
     const objectUrl = URL.createObjectURL(file)
     img.onload = () => {
       URL.revokeObjectURL(objectUrl)
-      const scale = Math.min(1, maxWidth / img.width)
+
+      let { width, height } = img
+      // iOS 記憶體保護：超大圖先縮到 4096px 以內再 drawImage，避免 OOM
+      const safeMax = Math.min(maxWidth, 4096)
+      const scale = Math.min(1, safeMax / Math.max(width, height))
+      width  = Math.round(width  * scale)
+      height = Math.round(height * scale)
+
+      // EXIF 旋轉 90/270 度時寬高互換
+      const swapped = orientation >= 5 && orientation <= 8
+      const canvasW = swapped ? height : width
+      const canvasH = swapped ? width  : height
+
       const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
+      canvas.width  = canvasW
+      canvas.height = canvasH
       const ctx = canvas.getContext('2d')
-      if (!ctx) { reject(new Error('canvas context unavailable')); return }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      if (!ctx) { reject(new Error('canvas unavailable')); return }
+
+      // 套用 EXIF 旋轉變換
+      applyExifTransform(ctx, orientation, canvasW, canvasH)
+      ctx.drawImage(img, 0, 0, width, height)
+
       const dataUrl = canvas.toDataURL('image/jpeg', quality)
-      if (!dataUrl || dataUrl === 'data:,') { reject(new Error('canvas toDataURL failed')); return }
+      // 釋放 canvas 記憶體（iOS 尤其重要）
+      canvas.width = 1; canvas.height = 1
+      if (!dataUrl || dataUrl === 'data:,') { reject(new Error('toDataURL failed')); return }
       resolve(dataUrl)
     }
     img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('image load failed')) }
@@ -239,11 +316,59 @@ function compressImage(file: File, maxWidth = 1200, quality = 0.85): Promise<str
   })
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(r.result as string)
-    r.onerror = reject
-    r.readAsDataURL(file)
+/** 從 JPEG 的 EXIF 讀取 Orientation tag（其他格式回傳 1） */
+function readExifOrientation(file: File): Promise<number> {
+  return new Promise(resolve => {
+    // 只有 JPEG 有 EXIF
+    if (!file.type.includes('jpeg') && !file.type.includes('jpg') && !file.name.toLowerCase().match(/\.jpe?g$/)) {
+      resolve(1)
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = e => {
+      try {
+        const view = new DataView(e.target!.result as ArrayBuffer)
+        if (view.getUint16(0, false) !== 0xFFD8) { resolve(1); return }
+        let offset = 2
+        while (offset < view.byteLength) {
+          const marker = view.getUint16(offset, false)
+          offset += 2
+          if (marker === 0xFFE1) {
+            // APP1 marker — EXIF data
+            offset += 2 // skip length
+            if (view.getUint32(offset, false) !== 0x45786966) { resolve(1); return } // "Exif"
+            const little = view.getUint16(offset + 6, false) === 0x4949
+            offset += 6 + view.getUint16(offset + 4, little)
+            const tags = view.getUint16(offset, little)
+            for (let i = 0; i < tags; i++) {
+              if (view.getUint16(offset + 2 + i * 12, little) === 0x0112) {
+                resolve(view.getUint16(offset + 2 + i * 12 + 8, little))
+                return
+              }
+            }
+            resolve(1)
+            return
+          }
+          if ((marker & 0xFF00) !== 0xFF00) break
+          offset += view.getUint16(offset, false)
+        }
+      } catch { /**/ }
+      resolve(1)
+    }
+    reader.onerror = () => resolve(1)
+    reader.readAsArrayBuffer(file.slice(0, 65536)) // 只讀前 64KB 即可找到 EXIF
   })
+}
+
+/** 根據 EXIF Orientation 旋轉 canvas context */
+function applyExifTransform(ctx: CanvasRenderingContext2D, orientation: number, w: number, h: number) {
+  switch (orientation) {
+    case 2: ctx.transform(-1, 0, 0, 1, w, 0); break
+    case 3: ctx.transform(-1, 0, 0, -1, w, h); break
+    case 4: ctx.transform(1, 0, 0, -1, 0, h); break
+    case 5: ctx.transform(0, 1, 1, 0, 0, 0); break
+    case 6: ctx.transform(0, 1, -1, 0, h, 0); break
+    case 7: ctx.transform(0, -1, -1, 0, h, w); break
+    case 8: ctx.transform(0, -1, 1, 0, 0, w); break
+  }
 }

@@ -17,7 +17,6 @@ interface Props {
   onBringToFront: () => void
 }
 
-const MAX_VIDEO_MB     = 50
 const MAX_BASE64_MB    = 5     // 小於此大小時 base64 編碼同步到 DB
 const block = (e: React.SyntheticEvent) => e.stopPropagation()
 
@@ -167,7 +166,7 @@ function VinylRecord({ videoUrl }: { videoUrl: string }) {
 export function VideoWidget({
   widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront
 }: Props) {
-  const content = widget.content as VideoContent
+  const content = (widget.content ?? { videoUrl: null, caption: '' }) as VideoContent
 
   const [uploading,      setUploading]      = useState(false)
   const [urlInput,       setUrlInput]       = useState('')
@@ -201,11 +200,6 @@ export function VideoWidget({
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
-      setError(`影片需小於 ${MAX_VIDEO_MB}MB，建議改用 YouTube 連結`)
-      e.target.value = ''
-      return
-    }
     setError('')
     setUploading(true)
 
@@ -403,7 +397,7 @@ export function VideoWidget({
                   <label
                     className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs w-full justify-center cursor-pointer"
                     style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-secondary)' }}>
-                    <Upload size={12} /> 從相簿上傳（&lt;{MAX_VIDEO_MB}MB）
+                    <Upload size={12} /> 從相簿上傳
                     <input type="file" accept="video/*"
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       style={{ fontSize: 0 }}

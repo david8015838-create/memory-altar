@@ -11,7 +11,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: 'auto',
       includeAssets: ['icons/*.svg', 'icons/*.png'],
       manifest: {
         name: '回憶祭壇',

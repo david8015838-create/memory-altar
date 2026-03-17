@@ -29,7 +29,13 @@ export function usePages(spaceId: string) {
       let loaded: Page[] = []
 
       if (isSupabaseConfigured) {
-        loaded = await loadPages(spaceId)
+        const [remote, local] = await Promise.all([
+          loadPages(spaceId),
+          Promise.resolve(loadLocal(spaceId)),
+        ])
+        // 優先用 Supabase 資料；若 Supabase 回傳空（網路問題）則用本地備援
+        // 避免產生新 UUID page 導致 widgets 全部消失
+        loaded = remote.length > 0 ? remote : local
       } else {
         loaded = loadLocal(spaceId)
       }

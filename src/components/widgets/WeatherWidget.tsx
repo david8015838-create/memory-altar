@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function WeatherWidget({ widget, isEditMode, isSelected, onSelect, onDeselect, onUpdate, onBringToFront }: Props) {
-  const content = widget.content as WeatherContent
+  const content = (widget.content ?? { mood: 'sunny', label: '', date: new Date().toISOString() }) as WeatherContent
   const [showPicker, setShowPicker] = useState(false)
   const [editingLabel, setEditingLabel] = useState(false)
   const mood = WEATHER_MOODS[content.mood]
