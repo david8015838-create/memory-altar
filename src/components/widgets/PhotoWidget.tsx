@@ -34,6 +34,7 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
   const [uploadError, setUploadError] = useState('')
   const [editingCaption, setEditingCaption] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const replaceInputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -54,17 +55,18 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
         const candidate = await compressToJpeg(file, maxW, q)
         // base64 700KB ≈ 原始 525KB，對 localStorage 很安全
         if (candidate.length <= 700_000) { url = candidate; break }
-        // 壓縮成功但仍偏大，繼續下一輪
-        if (!url) url = candidate  // 先記住，萬一後面都失敗
-      } catch {
-        // 這個參數組合失敗，繼續下一組
+        // 壓縮成功但仍偏大，先記住，繼續下一輪
+        if (!url) url = candidate
+      } catch (err) {
+        console.error(`[PhotoUpload] pass ${maxW}px failed:`, err)
       }
     }
 
     if (url) {
       onUpdate({ content: { ...content, imageUrl: url } })
+      setUploadError('')  // 清除舊錯誤
     } else {
-      setUploadError('照片太大，請先用相冊裁切後再上傳')
+      setUploadError('壓縮失敗，請換小一點的圖或重試')
     }
     setUploading(false)
     e.target.value = ''
@@ -128,53 +130,65 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
                   </button>
                 )}
 
-                {/* 編輯 + 選取：更換按鈕 */}
+                {/* 編輯 + 選取：更換按鈕 + 上傳錯誤提示 */}
                 {isEditMode && isSelected && (
-                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 10 }}
+                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}
                     onMouseDown={e => e.stopPropagation()}
                     onPointerDown={e => e.stopPropagation()}>
-                    <label
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer"
-                      style={{ background: 'rgba(0,0,0,0.8)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)' }}
-                      onMouseDown={e => e.stopPropagation()}
-                      onPointerDown={e => e.stopPropagation()}>
-                      <RotateCcw size={10} /> 更換
-                      <input ref={fileInputRef} type="file" accept={ACCEPT}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        style={{ fontSize: 0 }}
-                        onChange={handleUpload} />
-                    </label>
+                    {uploadError && (
+                      <p style={{ fontSize: 9, color: '#fb923c', background: 'rgba(0,0,0,0.8)', padding: '2px 6px', borderRadius: 6, maxWidth: 120, textAlign: 'right' }}>
+                        {uploadError}
+                      </p>
+                    )}
+                    {uploading ? (
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(0,0,0,0.8)', color: 'var(--text-secondary)' }}>
+                        <motion.div className="w-3 h-3 border border-gray-500 border-t-white rounded-full"
+                          animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
+                        <span style={{ fontSize: 10 }}>壓縮中</span>
+                      </div>
+                    ) : (
+                      <label
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer"
+                        style={{ background: 'rgba(0,0,0,0.8)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)', position: 'relative' }}
+                        onMouseDown={e => e.stopPropagation()}
+                        onPointerDown={e => e.stopPropagation()}>
+                        <RotateCcw size={10} /> 更換
+                        <input ref={replaceInputRef} type="file" accept={ACCEPT}
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', fontSize: 0 }}
+                          onChange={handleUpload} />
+                      </label>
+                    )}
                   </div>
                 )}
               </>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center gap-2"
                 style={{ color: '#888' }}>
-                {uploading ? (
-                  <motion.div className="w-5 h-5 border-2 border-gray-500 border-t-white rounded-full"
-                    animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
-                ) : (
-                  <>
-                    <Camera size={24} />
-                    {uploadError && (
-                      <p style={{ fontSize: 10, color: '#fb923c', textAlign: 'center', padding: '0 8px' }}>
-                        {uploadError}
-                      </p>
-                    )}
-                    {isEditMode && (
-                      <label
-                        className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer"
-                        style={{ background: 'rgba(255,255,255,0.08)', color: '#aaa', border: '1px solid rgba(255,255,255,0.12)' }}
-                        onMouseDown={e => e.stopPropagation()}
-                        onPointerDown={e => e.stopPropagation()}>
-                        點擊上傳照片
-                        <input type="file" accept={ACCEPT}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          style={{ fontSize: 0 }}
-                          onChange={handleUpload} />
-                      </label>
-                    )}
-                  </>
+                <Camera size={24} />
+                {uploadError && (
+                  <p style={{ fontSize: 10, color: '#fb923c', textAlign: 'center', padding: '0 8px' }}>
+                    {uploadError}
+                  </p>
+                )}
+                {isEditMode && (
+                  uploading ? (
+                    <div className="flex items-center gap-1.5" style={{ color: '#aaa', fontSize: 11 }}>
+                      <motion.div className="w-4 h-4 border-2 border-gray-500 border-t-white rounded-full"
+                        animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
+                      壓縮中…
+                    </div>
+                  ) : (
+                    <label
+                      className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer"
+                      style={{ background: 'rgba(255,255,255,0.08)', color: '#aaa', border: '1px solid rgba(255,255,255,0.12)' }}
+                      onMouseDown={e => e.stopPropagation()}
+                      onPointerDown={e => e.stopPropagation()}>
+                      點擊上傳照片
+                      <input ref={fileInputRef} type="file" accept={ACCEPT}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', fontSize: 0 }}
+                        onChange={handleUpload} />
+                    </label>
+                  )
                 )}
               </div>
             )}
@@ -283,7 +297,10 @@ async function compressToJpeg(file: File, maxWidth = 1600, quality = 0.88): Prom
     img.onload = () => {
       URL.revokeObjectURL(objectUrl)
 
-      let { width, height } = img
+      // naturalWidth/naturalHeight 在各瀏覽器更可靠（不受 CSS 影響）
+      let width  = img.naturalWidth  || img.width
+      let height = img.naturalHeight || img.height
+      if (!width || !height) { reject(new Error('image has zero dimensions')); return }
       // iOS 記憶體保護：超大圖先縮到 4096px 以內再 drawImage，避免 OOM
       const safeMax = Math.min(maxWidth, 4096)
       const scale = Math.min(1, safeMax / Math.max(width, height))
@@ -321,42 +338,51 @@ function readExifOrientation(file: File): Promise<number> {
   return new Promise(resolve => {
     // 只有 JPEG 有 EXIF
     if (!file.type.includes('jpeg') && !file.type.includes('jpg') && !file.name.toLowerCase().match(/\.jpe?g$/)) {
-      resolve(1)
-      return
+      resolve(1); return
     }
     const reader = new FileReader()
     reader.onload = e => {
       try {
         const view = new DataView(e.target!.result as ArrayBuffer)
+        // 確認 JPEG SOI
         if (view.getUint16(0, false) !== 0xFFD8) { resolve(1); return }
         let offset = 2
-        while (offset < view.byteLength) {
+        while (offset + 4 <= view.byteLength) {
           const marker = view.getUint16(offset, false)
           offset += 2
           if (marker === 0xFFE1) {
-            // APP1 marker — EXIF data
-            offset += 2 // skip length
-            if (view.getUint32(offset, false) !== 0x45786966) { resolve(1); return } // "Exif"
-            const little = view.getUint16(offset + 6, false) === 0x4949
-            offset += 6 + view.getUint16(offset + 4, little)
-            const tags = view.getUint16(offset, little)
-            for (let i = 0; i < tags; i++) {
-              if (view.getUint16(offset + 2 + i * 12, little) === 0x0112) {
-                resolve(view.getUint16(offset + 2 + i * 12 + 8, little))
+            // APP1 段：長度（包含本身 2 bytes）+ 資料
+            offset += 2  // 跳過長度欄位，現在 offset = "Exif" 起點
+            // 確認 "Exif\0\0"
+            if (view.getUint32(offset, false) !== 0x45786966) { resolve(1); return }
+            // TIFF header 從 offset+6 開始
+            const tiff = offset + 6
+            const little = view.getUint16(tiff, false) === 0x4949  // "II"=little-endian
+            // IFD0 的偏移量（相對 TIFF header 起點）
+            const ifdOff = view.getUint32(tiff + 4, little)
+            const ifd = tiff + ifdOff
+            const numEntries = view.getUint16(ifd, little)
+            // 搜尋 Orientation tag (0x0112)
+            for (let i = 0; i < numEntries && i < 64; i++) {
+              const entry = ifd + 2 + i * 12
+              if (view.getUint16(entry, little) === 0x0112) {
+                resolve(view.getUint16(entry + 8, little))
                 return
               }
             }
-            resolve(1)
-            return
+            resolve(1); return
           }
+          // 非 APP1：跳過這段
           if ((marker & 0xFF00) !== 0xFF00) break
-          offset += view.getUint16(offset, false)
+          if (marker === 0xFFDA) break  // SOS marker：圖像資料開始，之後找不到 EXIF
+          const segLen2 = view.getUint16(offset, false)
+          offset += segLen2
         }
       } catch { /**/ }
       resolve(1)
     }
     reader.onerror = () => resolve(1)
-    reader.readAsArrayBuffer(file.slice(0, 65536)) // 只讀前 64KB 即可找到 EXIF
+    reader.readAsArrayBuffer(file.slice(0, 65536))
   })
 }
 
