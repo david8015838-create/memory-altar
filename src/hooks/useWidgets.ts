@@ -13,17 +13,48 @@ const LOCAL_KEY = (spaceId: string) => `memory-altar-widgets-${spaceId}`
 function loadLocal(spaceId: string): Widget[] {
   try { return JSON.parse(localStorage.getItem(LOCAL_KEY(spaceId)) || '[]') } catch { return [] }
 }
-function saveLocal(spaceId: string, widgets: Widget[]) {
+/** 移除 widget 內所有 base64 大圖（imageUrl/videoUrl → null） */
+function stripBase64FromWidgets(widgets: Widget[]): Widget[] {
+  return widgets.map(w => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c = w.content as any
+    const hasB64Img = typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')
+    const hasB64Vid = typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:')
+    if (!hasB64Img && !hasB64Vid) return w
+    return { ...w, content: { ...c, imageUrl: hasB64Img ? null : c.imageUrl, videoUrl: hasB64Vid ? null : c.videoUrl } }
+  })
+}
+
+/** 清理所有 space 的本機 base64 以釋放空間 */
+export function clearAllLocalBase64() {
+  const keys = Object.keys(localStorage).filter(k => k.startsWith('memory-altar-widgets-'))
+  for (const key of keys) {
+    try {
+      const widgets: Widget[] = JSON.parse(localStorage.getItem(key) || '[]')
+      localStorage.setItem(key, JSON.stringify(stripBase64FromWidgets(widgets)))
+    } catch { /* ignore */ }
+  }
+}
+
+function isQuotaError(e: unknown): boolean {
+  return e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+}
+
+/** 回傳 true = 成功，false = 儲存空間不足 */
+function saveLocal(spaceId: string, widgets: Widget[]): boolean {
   try {
     localStorage.setItem(LOCAL_KEY(spaceId), JSON.stringify(widgets))
+    return true
   } catch (e) {
-    // QuotaExceededError — localStorage 已滿；資料仍在記憶體中，不影響當前操作
-    // 可觸發雲端同步來清理 base64 大圖
-    if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-      console.warn('[saveLocal] localStorage quota exceeded — use cloud sync to free space')
-    } else {
-      console.warn('[saveLocal] unexpected error:', e)
+    if (isQuotaError(e)) {
+      // 嘗試清除所有 space 的 base64 來釋放空間，再重試
+      try {
+        clearAllLocalBase64()
+        localStorage.setItem(LOCAL_KEY(spaceId), JSON.stringify(stripBase64FromWidgets(widgets)))
+      } catch { /* 完全失敗，資料只在記憶體中 */ }
+      return false
     }
+    return true
   }
 }
 
@@ -31,6 +62,7 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   const [allWidgets, setAllWidgets] = useState<Widget[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isOnline, setIsOnline] = useState(isSupabaseConfigured)
+  const [isStorageFull, setIsStorageFull] = useState(false)
   const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   // Undo / Redo stacks（ref 避免 stale closure）
@@ -49,7 +81,8 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     if (!spaceId || isLoading || allWidgets.length === 0) return
     if (localSaveTimer.current) clearTimeout(localSaveTimer.current)
     localSaveTimer.current = setTimeout(() => {
-      saveLocal(spaceId, allWidgets)
+      const ok = saveLocal(spaceId, allWidgets)
+      setIsStorageFull(!ok)
     }, 400)
     return () => { if (localSaveTimer.current) clearTimeout(localSaveTimer.current) }
   }, [allWidgets, spaceId, isLoading])
@@ -290,7 +323,15 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     return { synced, failed }
   }, [spaceId])
 
-  return { widgets, isLoading, isOnline, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront, syncToCloud, undo, redo }
+  /** 清理本機所有 base64 釋放空間（手動呼叫） */
+  const clearLocalCache = useCallback(() => {
+    clearAllLocalBase64()
+    // 更新 React state 中的 widgets（把 base64 也清掉）
+    setAllWidgets(prev => stripBase64FromWidgets(prev))
+    setIsStorageFull(false)
+  }, [])
+
+  return { widgets, isLoading, isOnline, isStorageFull, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront, syncToCloud, undo, redo, clearLocalCache }
 }
 
 function getDefaultContent(type: WidgetType): PhotoContent | StickerContent | TimerContent | WeatherContent | VideoContent | DrawingContent | LoveNoteContent {

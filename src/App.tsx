@@ -29,7 +29,7 @@ export default function App() {
   const { status, spaceId, error, isCreatingNew, setIsCreatingNew, login, register, logout } = useAuth()
 
   const { pages, currentPageId, setCurrentPageId, addPage, renamePage, removePage } = usePages(spaceId)
-  const { widgets, isLoading, isOnline, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront, syncToCloud, undo, redo } = useWidgets(spaceId, currentPageId)
+  const { widgets, isLoading, isOnline, isStorageFull, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront, syncToCloud, undo, redo, clearLocalCache } = useWidgets(spaceId, currentPageId)
 
   const [mode, setMode] = useState<AppMode>('view')
   const [showDrawingCanvas, setShowDrawingCanvas] = useState(false)
@@ -233,6 +233,32 @@ export default function App() {
         >
           ✏️ 點此返回編輯
         </motion.button>
+      )}
+
+      {/* 本機儲存空間已滿警告 */}
+      {isStorageFull && !showDrawingCanvas && (
+        <motion.div
+          className="fixed left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs"
+          style={{
+            zIndex: 200,
+            bottom: 'max(5rem, calc(env(safe-area-inset-bottom) + 5rem))',
+            background: 'rgba(239,68,68,0.92)',
+            color: '#fff',
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            maxWidth: '90vw',
+          }}
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+        >
+          <span>⚠️ 本機儲存已滿，照片重整後會消失</span>
+          <button
+            className="underline font-semibold whitespace-nowrap"
+            onClick={async () => { await syncToCloud(); clearLocalCache() }}
+          >
+            ☁️ 同步並清理
+          </button>
+        </motion.div>
       )}
 
       {/* 分頁 Tabs */}
