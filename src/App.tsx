@@ -16,6 +16,7 @@ import { StarShower } from './components/effects/StarShower'
 import { SnowFall } from './components/effects/SnowFall'
 import { Fireflies } from './components/effects/Fireflies'
 import { InfiniteCanvas } from './components/Canvas/InfiniteCanvas'
+import { ViewFeed } from './components/Canvas/ViewFeed'
 import { Toolbar } from './components/ui/Toolbar'
 import { PageTabs } from './components/pages/PageTabs'
 import { LoginScreen } from './components/auth/LoginScreen'
@@ -160,8 +161,8 @@ export default function App() {
     <div className="fixed inset-0 overflow-hidden" style={{ background: theme.backgroundGradient }}>
       <FloatingBackground theme={theme} />
 
-      {/* 無限畫布 */}
-      {!showDrawingCanvas && currentPageId && (
+      {/* 編輯模式：無限畫布（可拖曳、縮放） */}
+      {!showDrawingCanvas && currentPageId && mode === 'edit' && (
         <InfiniteCanvas
           key={currentPageId}
           widgets={widgets}
@@ -176,6 +177,17 @@ export default function App() {
           initialTransform={pageInitialTransform}
           onRegisterGetCenter={fn => { getCenterRef.current = fn }}
           onRegisterGetViewport={fn => { getViewportRef.current = fn }}
+        />
+      )}
+
+      {/* 瀏覽模式：垂直 Feed（類 Facebook 捲動） */}
+      {!showDrawingCanvas && currentPageId && mode === 'view' && (
+        <ViewFeed
+          key={currentPageId}
+          widgets={widgets}
+          theme={theme}
+          onUpdateWidget={updateWidget}
+          onBringToFront={bringToFront}
         />
       )}
 
