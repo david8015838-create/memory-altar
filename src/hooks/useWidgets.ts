@@ -8,7 +8,17 @@ import type { Widget, WidgetType, PhotoContent, StickerContent, TimerContent, We
 import { WIDGET_DEFAULTS } from '../constants/themes'
 import { supabase, isSupabaseConfigured, loadWidgets, saveWidget, deleteWidget as dbDelete, dataUrlToStorage } from '../lib/supabase'
 
-const LOCAL_KEY = (spaceId: string) => `memory-altar-widgets-${spaceId}`
+const LOCAL_KEY      = (spaceId: string) => `memory-altar-widgets-${spaceId}`
+const TOMBSTONE_KEY  = (spaceId: string) => `memory-altar-deleted-${spaceId}`
+
+/** 讀取已刪除 widget ID 的 tombstone 集合 */
+function loadTombstone(spaceId: string): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(TOMBSTONE_KEY(spaceId)) || '[]')) } catch { return new Set() }
+}
+/** 寫入 tombstone */
+function saveTombstone(spaceId: string, ids: Set<string>) {
+  try { localStorage.setItem(TOMBSTONE_KEY(spaceId), JSON.stringify([...ids])) } catch { /* ignore */ }
+}
 
 function loadLocal(spaceId: string): Widget[] {
   try { return JSON.parse(localStorage.getItem(LOCAL_KEY(spaceId)) || '[]') } catch { return [] }
@@ -97,17 +107,33 @@ export function useWidgets(spaceId: string, currentPageId: string) {
           loadWidgets(spaceId),
           Promise.resolve(loadLocal(spaceId)),
         ])
+        const tombstone = loadTombstone(spaceId)
+
+        // 重試：tombstone 裡仍存在於 remote 的 widget → 補刪
+        const toRetry = remote.filter(w => tombstone.has(w.id))
+        if (toRetry.length > 0) {
+          await Promise.all(toRetry.map(w => dbDelete(w.id)))
+        }
+
         const merged = new Map<string, Widget>()
         for (const w of local)  merged.set(w.id, w)
         for (const w of remote) {
+          if (tombstone.has(w.id)) continue  // 跳過已刪除的
           const existing = merged.get(w.id)
           if (!existing || new Date(w.updated_at) >= new Date(existing.updated_at)) {
             merged.set(w.id, w)
           }
         }
+
+        // tombstone 清理：remote 已不存在的 ID = Supabase 確認刪除 → 從 tombstone 移除
+        const remoteIds = new Set(remote.map(w => w.id))
+        for (const id of [...tombstone]) {
+          if (!remoteIds.has(id)) tombstone.delete(id)
+        }
+        saveTombstone(spaceId, tombstone)
+
         data = Array.from(merged.values())
         saveLocal(spaceId, data)
-        const remoteIds = new Set(remote.map(w => w.id))
         const localOnly = data.filter(w => !remoteIds.has(w.id))
         if (localOnly.length > 0) {
           await Promise.all(localOnly.map(saveWidget))
@@ -249,6 +275,10 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   const deleteWidget = useCallback((id: string) => {
     snapshot()
     setAllWidgets(prev => prev.filter(w => w.id !== id))
+    // 寫入 tombstone，防止 Supabase 刪除失敗時 reload 後重新出現
+    const tombstone = loadTombstone(spaceId)
+    tombstone.add(id)
+    saveTombstone(spaceId, tombstone)
     if (isSupabaseConfigured) dbDelete(id)
   }, [spaceId])
 
