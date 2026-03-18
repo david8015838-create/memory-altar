@@ -138,7 +138,18 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   const debouncedSave = useCallback((widget: Widget) => {
     const t = saveTimers.current.get(widget.id)
     if (t) clearTimeout(t)
-    const timer = setTimeout(() => { if (isSupabaseConfigured) saveWidget(widget); saveTimers.current.delete(widget.id) }, 800)
+    const timer = setTimeout(() => {
+      if (isSupabaseConfigured) {
+        // 跳過含 base64 的 widget 直接存 Supabase（太大會 timeout）
+        // 使用者可按 ☁️ 同步按鈕上傳到 Storage 後再存
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const c = widget.content as any
+        const hasBase64 = (typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')) ||
+                          (typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:'))
+        if (!hasBase64) saveWidget(widget)
+      }
+      saveTimers.current.delete(widget.id)
+    }, 800)
     saveTimers.current.set(widget.id, timer)
   }, [])
 

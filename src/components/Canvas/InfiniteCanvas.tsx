@@ -52,6 +52,7 @@ export function InfiniteCanvas({
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // ── Refs ─────────────────────────────────────────────────
+  const containerRef      = useRef<HTMLDivElement | null>(null)
   const isPanning         = useRef(false)
   const leftClickMayPan   = useRef(false)   // left-drag pan pending threshold
   const panStart          = useRef({ x: 0, y: 0 })
@@ -71,6 +72,9 @@ export function InfiniteCanvas({
   useEffect(() => {
     return () => { if (inertiaRaf.current) cancelAnimationFrame(inertiaRaf.current) }
   }, [])
+
+  // ref to latest applyZoom (set after it's defined below)
+  const applyZoomRef = useRef<(ratio: number, ox: number, oy: number) => void>(() => {})
 
   // Expose live viewport center in canvas coords (for widget spawn position)
   useEffect(() => {
@@ -151,6 +155,22 @@ export function InfiniteCanvas({
     setT(next)
   }, [])
 
+  // Keep ref up to date so the wheel listener always uses latest applyZoom
+  useEffect(() => { applyZoomRef.current = applyZoom }, [applyZoom])
+
+  // Non-passive wheel listener (React onWheel is passive → preventDefault ignored)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const ratio = e.deltaY > 0 ? 0.9 : 1.1
+      applyZoomRef.current(ratio, e.clientX, e.clientY)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])  // only mount/unmount — applyZoomRef stays current
+
   const applyPan = useCallback((dx: number, dy: number) => {
     const prev = tRef.current
     const next: Transform = { viewX: prev.viewX + dx, viewY: prev.viewY + dy, scale: prev.scale }
@@ -201,12 +221,6 @@ export function InfiniteCanvas({
     leftClickMayPan.current = false
     setIsMousePanning(false)
   }, [])
-
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const ratio = e.deltaY > 0 ? 0.9 : 1.1
-    applyZoom(ratio, e.clientX, e.clientY)
-  }, [applyZoom])
 
   // ── 觸控事件 ─────────────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -321,6 +335,7 @@ export function InfiniteCanvas({
   return (
     <>
       <div
+        ref={containerRef}
         className="fixed inset-0 overflow-hidden select-none"
         style={{
           zIndex: 1,
@@ -331,7 +346,6 @@ export function InfiniteCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
