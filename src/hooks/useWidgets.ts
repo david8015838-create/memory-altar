@@ -1,5 +1,6 @@
 // ============================================================
-// useWidgets v5 - debounced localStorage + realtime null-content guard
+// useWidgets v6 - 純雲端模式，完全不用 localStorage
+// 所有資料只存 Supabase，刪除即刪除，不會復活
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -8,74 +9,14 @@ import type { Widget, WidgetType, PhotoContent, StickerContent, TimerContent, We
 import { WIDGET_DEFAULTS } from '../constants/themes'
 import { supabase, isSupabaseConfigured, loadWidgets, saveWidget, deleteWidget as dbDelete, dataUrlToStorage } from '../lib/supabase'
 
-const LOCAL_KEY      = (spaceId: string) => `memory-altar-widgets-${spaceId}`
-const TOMBSTONE_KEY  = (spaceId: string) => `memory-altar-deleted-${spaceId}`
-
-/** 讀取已刪除 widget ID 的 tombstone 集合 */
-function loadTombstone(spaceId: string): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(TOMBSTONE_KEY(spaceId)) || '[]')) } catch { return new Set() }
-}
-/** 寫入 tombstone */
-function saveTombstone(spaceId: string, ids: Set<string>) {
-  try { localStorage.setItem(TOMBSTONE_KEY(spaceId), JSON.stringify([...ids])) } catch { /* ignore */ }
-}
-
-function loadLocal(spaceId: string): Widget[] {
-  try { return JSON.parse(localStorage.getItem(LOCAL_KEY(spaceId)) || '[]') } catch { return [] }
-}
-/** 移除 widget 內所有 base64 大圖（imageUrl/videoUrl → null） */
-function stripBase64FromWidgets(widgets: Widget[]): Widget[] {
-  return widgets.map(w => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const c = w.content as any
-    const hasB64Img = typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')
-    const hasB64Vid = typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:')
-    if (!hasB64Img && !hasB64Vid) return w
-    return { ...w, content: { ...c, imageUrl: hasB64Img ? null : c.imageUrl, videoUrl: hasB64Vid ? null : c.videoUrl } }
-  })
-}
-
-/** 清理所有 space 的本機 base64 以釋放空間 */
-export function clearAllLocalBase64() {
-  const keys = Object.keys(localStorage).filter(k => k.startsWith('memory-altar-widgets-'))
-  for (const key of keys) {
-    try {
-      const widgets: Widget[] = JSON.parse(localStorage.getItem(key) || '[]')
-      localStorage.setItem(key, JSON.stringify(stripBase64FromWidgets(widgets)))
-    } catch { /* ignore */ }
-  }
-}
-
-function isQuotaError(e: unknown): boolean {
-  return e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')
-}
-
-/** 回傳 true = 成功，false = 儲存空間不足 */
-function saveLocal(spaceId: string, widgets: Widget[]): boolean {
-  try {
-    localStorage.setItem(LOCAL_KEY(spaceId), JSON.stringify(widgets))
-    return true
-  } catch (e) {
-    if (isQuotaError(e)) {
-      // 嘗試清除所有 space 的 base64 來釋放空間，再重試
-      try {
-        clearAllLocalBase64()
-        localStorage.setItem(LOCAL_KEY(spaceId), JSON.stringify(stripBase64FromWidgets(widgets)))
-      } catch { /* 完全失敗，資料只在記憶體中 */ }
-      return false
-    }
-    return true
-  }
-}
-
 export function useWidgets(spaceId: string, currentPageId: string) {
   const [allWidgets, setAllWidgets] = useState<Widget[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isOnline, setIsOnline] = useState(isSupabaseConfigured)
-  const [isStorageFull, setIsStorageFull] = useState(false)
+
   const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
-  // Undo / Redo stacks（ref 避免 stale closure）
+  // Undo / Redo stacks
   const undoStack = useRef<Widget[][]>([])
   const redoStack = useRef<Widget[][]>([])
   const allWidgetsRef = useRef<Widget[]>([])
@@ -84,81 +25,30 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   // 過濾出當前頁面的 widgets
   const widgets = allWidgets.filter(w => w.page_id === currentPageId)
 
-  // ── 防抖 localStorage 寫入：避免每次 drag 事件都 JSON.stringify 大量資料
-  // 重要：isLoading 期間不寫，防止在 init 完成前把資料清空
-  // 注意：不能加 allWidgets.length === 0 條件，否則使用者刪光所有 widget 後 localStorage 不會更新，
-  //       下次 reload 就會把已刪除的 widget 讀回來
-  const localSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (!spaceId || isLoading) return
-    if (localSaveTimer.current) clearTimeout(localSaveTimer.current)
-    localSaveTimer.current = setTimeout(() => {
-      const ok = saveLocal(spaceId, allWidgets)
-      setIsStorageFull(!ok)
-    }, 400)
-    return () => { if (localSaveTimer.current) clearTimeout(localSaveTimer.current) }
-  }, [allWidgets, spaceId, isLoading])
-
+  // ── 初始載入：只從 Supabase 拿資料 ──────────────────────
   useEffect(() => {
     if (!spaceId) return
     async function init() {
       setIsLoading(true)
-      let data: Widget[] = []
       if (isSupabaseConfigured) {
-        const [remote, local] = await Promise.all([
-          loadWidgets(spaceId),
-          Promise.resolve(loadLocal(spaceId)),
-        ])
-        const tombstone = loadTombstone(spaceId)
-
-        // 重試：tombstone 裡仍存在於 remote 的 widget → 補刪
-        const toRetry = remote.filter(w => tombstone.has(w.id))
-        if (toRetry.length > 0) {
-          await Promise.all(toRetry.map(w => dbDelete(w.id)))
-        }
-
-        const merged = new Map<string, Widget>()
-        for (const w of local)  merged.set(w.id, w)
-        for (const w of remote) {
-          if (tombstone.has(w.id)) continue  // 跳過已刪除的
-          const existing = merged.get(w.id)
-          if (!existing || new Date(w.updated_at) >= new Date(existing.updated_at)) {
-            merged.set(w.id, w)
-          }
-        }
-
-        // tombstone 清理：remote 已不存在的 ID = Supabase 確認刪除 → 從 tombstone 移除
-        const remoteIds = new Set(remote.map(w => w.id))
-        for (const id of [...tombstone]) {
-          if (!remoteIds.has(id)) tombstone.delete(id)
-        }
-        saveTombstone(spaceId, tombstone)
-
-        data = Array.from(merged.values())
-        saveLocal(spaceId, data)
-        const localOnly = data.filter(w => !remoteIds.has(w.id))
-        if (localOnly.length > 0) {
-          await Promise.all(localOnly.map(saveWidget))
-        }
+        const data = await loadWidgets(spaceId)
+        setAllWidgets(data)
       } else {
-        data = loadLocal(spaceId)
         setIsOnline(false)
+        setAllWidgets([])
       }
-      setAllWidgets(data)
       setIsLoading(false)
     }
     init()
   }, [spaceId])
 
-  // Realtime
+  // ── Realtime 訂閱 ────────────────────────────────────────
   useEffect(() => {
     if (!supabase || !isSupabaseConfigured || !spaceId) return
     const channel = supabase!.channel(`widgets-v2:${spaceId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'widgets', filter: `space_id=eq.${spaceId}` },
         (payload) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            // Guard: Supabase realtime message size limit can cause content to be null
-            // This would crash widget components and unmount the entire tree
             if (!payload.new?.content) return
             const w = { ...payload.new, zIndex: payload.new.z_index } as Widget
             setAllWidgets(prev => {
@@ -173,60 +63,27 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     return () => { supabase!.removeChannel(channel) }
   }, [spaceId])
 
-  // A4: cleanup all timers on unmount
+  // ── cleanup timers on unmount ────────────────────────────
   useEffect(() => () => {
     saveTimers.current.forEach(clearTimeout)
     saveTimers.current.clear()
-    if (localSaveTimer.current) clearTimeout(localSaveTimer.current)
   }, [])
 
-  // iOS PWA recovery: 當 app 從背景返回（例如選完照片後），
-  // 如果 allWidgets 意外變空，從 localStorage 恢復
-  useEffect(() => {
-    if (!spaceId) return
-    const handleVisibility = () => {
-      if (document.visibilityState !== 'visible') return
-      if (allWidgetsRef.current.length > 0) return  // 有內容就不需要恢復
-      const local = loadLocal(spaceId)
-      if (local.length > 0) {
-        setAllWidgets(local)
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [spaceId])
-
+  // ── 防抖存 Supabase（拖曳時避免每 px 都發請求） ─────────
   const debouncedSave = useCallback((widget: Widget) => {
     const t = saveTimers.current.get(widget.id)
     if (t) clearTimeout(t)
     const timer = setTimeout(() => {
-      if (isSupabaseConfigured) {
-        // 跳過含 base64 的 widget 直接存 Supabase（太大會 timeout）
-        // 使用者可按 ☁️ 同步按鈕上傳到 Storage 後再存
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const c = widget.content as any
-        const hasBase64 = (typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')) ||
-                          (typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:'))
-        if (!hasBase64) saveWidget(widget)
-      }
+      if (isSupabaseConfigured) saveWidgetSafe(widget)
       saveTimers.current.delete(widget.id)
     }, 800)
     saveTimers.current.set(widget.id, timer)
   }, [])
 
-  // ── Undo/Redo helpers ───────────────────────────────────
+  // ── Undo/Redo ────────────────────────────────────────────
   const snapshot = () => {
     undoStack.current = [...undoStack.current.slice(-19), [...allWidgetsRef.current]]
     redoStack.current = []
-  }
-
-  /** 儲存一個 widget 到 Supabase，跳過含 base64 的（太大會 timeout） */
-  const saveWidgetSafe = (w: Widget) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const c = w.content as any
-    const hasBase64 = (typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')) ||
-                      (typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:'))
-    if (!hasBase64) saveWidget(w)
   }
 
   const undo = useCallback(() => {
@@ -236,17 +93,22 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     const prev = undoStack.current[undoStack.current.length - 1]
     undoStack.current = undoStack.current.slice(0, -1)
     redoStack.current = [...redoStack.current, [...allWidgetsRef.current]]
+
+    // 找出被 undo 恢復的 widget（在 prev 有但 current 沒有 = 之前被刪的）
+    const currentIds = new Set(allWidgetsRef.current.map(w => w.id))
+    const restored = prev.filter(w => !currentIds.has(w.id))
+
     setAllWidgets(prev)
-    saveLocal(spaceId, prev)
+
     if (isSupabaseConfigured) {
-      // 若 undo 復原了被刪除的 widget，需從 tombstone 移除並重新存回 Supabase
-      const tombstone = loadTombstone(spaceId)
-      let tombstoneChanged = false
-      prev.forEach(w => {
-        saveWidgetSafe(w)
-        if (tombstone.has(w.id)) { tombstone.delete(w.id); tombstoneChanged = true }
+      // 更新所有 widget
+      prev.forEach(saveWidgetSafe)
+      // 刪除在 prev 中不存在的（redo 之前新增的）
+      const prevIds = new Set(prev.map(w => w.id))
+      allWidgetsRef.current.forEach(w => {
+        if (!prevIds.has(w.id)) dbDelete(w.id)
       })
-      if (tombstoneChanged) saveTombstone(spaceId, tombstone)
+      void restored // 已透過 saveWidgetSafe 處理
     }
   }, [spaceId])
 
@@ -257,16 +119,15 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     const next = redoStack.current[redoStack.current.length - 1]
     redoStack.current = redoStack.current.slice(0, -1)
     undoStack.current = [...undoStack.current, [...allWidgetsRef.current]]
+
     setAllWidgets(next)
-    saveLocal(spaceId, next)
+
     if (isSupabaseConfigured) {
-      const tombstone = loadTombstone(spaceId)
-      let tombstoneChanged = false
-      next.forEach(w => {
-        saveWidgetSafe(w)
-        if (tombstone.has(w.id)) { tombstone.delete(w.id); tombstoneChanged = true }
+      next.forEach(saveWidgetSafe)
+      const nextIds = new Set(next.map(w => w.id))
+      allWidgetsRef.current.forEach(w => {
+        if (!nextIds.has(w.id)) dbDelete(w.id)
       })
-      if (tombstoneChanged) saveTombstone(spaceId, tombstone)
     }
   }, [spaceId])
 
@@ -301,10 +162,6 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   const deleteWidget = useCallback((id: string) => {
     snapshot()
     setAllWidgets(prev => prev.filter(w => w.id !== id))
-    // 寫入 tombstone，防止 Supabase 刪除失敗時 reload 後重新出現
-    const tombstone = loadTombstone(spaceId)
-    tombstone.add(id)
-    saveTombstone(spaceId, tombstone)
     if (isSupabaseConfigured) dbDelete(id)
   }, [spaceId])
 
@@ -333,7 +190,7 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     })
   }, [debouncedSave])
 
-  /** 雲端同步：將所有 base64 media 上傳到 Storage，再強制寫入 DB */
+  /** 雲端同步：將殘留的 base64 media 上傳到 Storage */
   const syncToCloud = useCallback(async (): Promise<{ synced: number; failed: number }> => {
     if (!isSupabaseConfigured) return { synced: 0, failed: 0 }
     let synced = 0, failed = 0
@@ -365,17 +222,12 @@ export function useWidgets(spaceId: string, currentPageId: string) {
       updatedWidgets.push(updated)
     }
 
-    // B2 fix: compare by ID-keyed lookup, not by index
     const hasChanges = updatedWidgets.some(uw => {
       const orig = current.find(o => o.id === uw.id)
       return orig !== uw
     })
-    if (hasChanges) {
-      setAllWidgets(updatedWidgets)
-      saveLocal(spaceId, updatedWidgets)
-    }
+    if (hasChanges) setAllWidgets(updatedWidgets)
 
-    // 只儲存有變更的 widget（base64 → Storage URL），跳過仍含 base64 的失敗項目
     await Promise.all(updatedWidgets.map(w => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c = w.content as any
@@ -386,25 +238,32 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     return { synced, failed }
   }, [spaceId])
 
-  /** 清理本機所有 base64 釋放空間（手動呼叫） */
-  const clearLocalCache = useCallback(() => {
-    clearAllLocalBase64()
-    // 更新 React state 中的 widgets（把 base64 也清掉）
-    setAllWidgets(prev => stripBase64FromWidgets(prev))
-    setIsStorageFull(false)
-  }, [])
+  return {
+    widgets, isLoading, isOnline,
+    isStorageFull: false,  // 不用 localStorage，永遠不會滿
+    addWidget, updateWidget, deleteWidget, duplicateWidget,
+    bringToFront, syncToCloud, undo, redo,
+    clearLocalCache: () => {},  // no-op
+  }
+}
 
-  return { widgets, isLoading, isOnline, isStorageFull, addWidget, updateWidget, deleteWidget, duplicateWidget, bringToFront, syncToCloud, undo, redo, clearLocalCache }
+/** 儲存 widget 到 Supabase，跳過含 base64 的（太大會 timeout） */
+function saveWidgetSafe(w: Widget) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = w.content as any
+  const hasBase64 = (typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')) ||
+                    (typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:'))
+  if (!hasBase64) saveWidget(w)
 }
 
 function getDefaultContent(type: WidgetType): PhotoContent | StickerContent | TimerContent | WeatherContent | VideoContent | DrawingContent | LoveNoteContent {
   switch (type) {
-    case 'photo':    return { imageUrl: null, caption: '', style: 'polaroid' } as PhotoContent
-    case 'sticker':  return { text: '點選後編輯 ✍️', fontSize: 18, color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.12)', showBorder: true } as StickerContent
-    case 'timer':    return { title: '在一起', startDate: new Date().toISOString().split('T')[0], emoji: '💕' } as TimerContent
-    case 'weather':  return { mood: 'sunny', label: '今天好幸福', date: new Date().toISOString() } as WeatherContent
-    case 'video':    return { videoUrl: null, caption: '' } as VideoContent
-    case 'drawing':    return { imageUrl: null, caption: '', showBorder: true } as DrawingContent
-    case 'love-note':  return { message: '', from: '' } as LoveNoteContent
+    case 'photo':     return { imageUrl: null, caption: '', style: 'polaroid' } as PhotoContent
+    case 'sticker':   return { text: '點選後編輯 ✍️', fontSize: 18, color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.12)', showBorder: true } as StickerContent
+    case 'timer':     return { title: '在一起', startDate: new Date().toISOString().split('T')[0], emoji: '💕' } as TimerContent
+    case 'weather':   return { mood: 'sunny', label: '今天好幸福', date: new Date().toISOString() } as WeatherContent
+    case 'video':     return { videoUrl: null, caption: '' } as VideoContent
+    case 'drawing':   return { imageUrl: null, caption: '', showBorder: true } as DrawingContent
+    case 'love-note': return { message: '', from: '' } as LoveNoteContent
   }
 }
