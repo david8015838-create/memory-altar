@@ -54,11 +54,15 @@ export function PhotoWidget({ widget, isEditMode, isSelected, onSelect, onDesele
         // Step 2a: upload directly to Supabase Storage → get permanent URL
         setUploadStatus('uploading')
         imageUrl = await uploadFile(blob, widget.space_id, 'photos')
-        if (!imageUrl) console.error('[PhotoUpload] Supabase returned null URL')
       }
 
       // Step 2b: if Supabase not configured OR upload failed, fall back to base64
       if (!imageUrl) {
+        if (isSupabaseConfigured) {
+          // Supabase configured but upload failed → warn user
+          console.warn('[PhotoUpload] Supabase upload failed, falling back to local base64')
+          setUploadError('雲端上傳失敗，已暫存本機（建議稍後按 ☁️ 同步）')
+        }
         setUploadStatus('compressing')
         const passes: [number, number][] = [
           [1600, 0.88],
@@ -333,12 +337,14 @@ async function compressToBlob(file: File, maxWidth = 1600, quality = 0.88): Prom
       canvas.width  = canvasW
       canvas.height = canvasH
       const ctx = canvas.getContext('2d')
-      if (!ctx) { reject(new Error('canvas unavailable')); return }
+      if (!ctx) { URL.revokeObjectURL(objectUrl); reject(new Error('canvas unavailable')); return }
 
       applyExifTransform(ctx, orientation, canvasW, canvasH)
       ctx.drawImage(img, 0, 0, width, height)
 
       canvas.toBlob(blob => {
+        // 像素資料已複製到 Blob，現在才安全 revoke
+        URL.revokeObjectURL(objectUrl)
         canvas.width = 1; canvas.height = 1
         if (!blob) { reject(new Error('toBlob failed')); return }
         resolve(blob)
@@ -382,6 +388,8 @@ async function compressToJpeg(file: File, maxWidth = 1600, quality = 0.88): Prom
       applyExifTransform(ctx, orientation, canvasW, canvasH)
       ctx.drawImage(img, 0, 0, width, height)
 
+      // 像素已 drawImage，revokeObjectURL 後再讀 canvas 仍安全
+      URL.revokeObjectURL(objectUrl)
       const dataUrl = canvas.toDataURL('image/jpeg', quality)
       canvas.width = 1; canvas.height = 1
       if (!dataUrl || dataUrl === 'data:,') { reject(new Error('toDataURL failed')); return }

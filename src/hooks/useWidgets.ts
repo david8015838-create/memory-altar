@@ -85,10 +85,12 @@ export function useWidgets(spaceId: string, currentPageId: string) {
   const widgets = allWidgets.filter(w => w.page_id === currentPageId)
 
   // ── 防抖 localStorage 寫入：避免每次 drag 事件都 JSON.stringify 大量資料
-  // 重要：isLoading 中或空陣列絕對不寫，防止在 init 完成前把資料清空
+  // 重要：isLoading 期間不寫，防止在 init 完成前把資料清空
+  // 注意：不能加 allWidgets.length === 0 條件，否則使用者刪光所有 widget 後 localStorage 不會更新，
+  //       下次 reload 就會把已刪除的 widget 讀回來
   const localSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (!spaceId || isLoading || allWidgets.length === 0) return
+    if (!spaceId || isLoading) return
     if (localSaveTimer.current) clearTimeout(localSaveTimer.current)
     localSaveTimer.current = setTimeout(() => {
       const ok = saveLocal(spaceId, allWidgets)
@@ -218,9 +220,17 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     redoStack.current = []
   }
 
+  /** 儲存一個 widget 到 Supabase，跳過含 base64 的（太大會 timeout） */
+  const saveWidgetSafe = (w: Widget) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c = w.content as any
+    const hasBase64 = (typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')) ||
+                      (typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:'))
+    if (!hasBase64) saveWidget(w)
+  }
+
   const undo = useCallback(() => {
     if (undoStack.current.length === 0) return
-    // A3: flush all pending debounce saves before undo to prevent overwriting
     saveTimers.current.forEach(clearTimeout)
     saveTimers.current.clear()
     const prev = undoStack.current[undoStack.current.length - 1]
@@ -228,12 +238,20 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     redoStack.current = [...redoStack.current, [...allWidgetsRef.current]]
     setAllWidgets(prev)
     saveLocal(spaceId, prev)
-    if (isSupabaseConfigured) prev.forEach(saveWidget)
+    if (isSupabaseConfigured) {
+      // 若 undo 復原了被刪除的 widget，需從 tombstone 移除並重新存回 Supabase
+      const tombstone = loadTombstone(spaceId)
+      let tombstoneChanged = false
+      prev.forEach(w => {
+        saveWidgetSafe(w)
+        if (tombstone.has(w.id)) { tombstone.delete(w.id); tombstoneChanged = true }
+      })
+      if (tombstoneChanged) saveTombstone(spaceId, tombstone)
+    }
   }, [spaceId])
 
   const redo = useCallback(() => {
     if (redoStack.current.length === 0) return
-    // A3: flush all pending debounce saves before redo
     saveTimers.current.forEach(clearTimeout)
     saveTimers.current.clear()
     const next = redoStack.current[redoStack.current.length - 1]
@@ -241,14 +259,22 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     undoStack.current = [...undoStack.current, [...allWidgetsRef.current]]
     setAllWidgets(next)
     saveLocal(spaceId, next)
-    if (isSupabaseConfigured) next.forEach(saveWidget)
+    if (isSupabaseConfigured) {
+      const tombstone = loadTombstone(spaceId)
+      let tombstoneChanged = false
+      next.forEach(w => {
+        saveWidgetSafe(w)
+        if (tombstone.has(w.id)) { tombstone.delete(w.id); tombstoneChanged = true }
+      })
+      if (tombstoneChanged) saveTombstone(spaceId, tombstone)
+    }
   }, [spaceId])
 
   // ── CRUD ────────────────────────────────────────────────
   const addWidget = useCallback((type: WidgetType, canvasCenter: { x: number; y: number }) => {
     snapshot()
     const defaults = WIDGET_DEFAULTS[type] || { width: 200, height: 200 }
-    const maxZ = Math.max(0, ...allWidgetsRef.current.map(w => w.zIndex))
+    const maxZ = allWidgetsRef.current.reduce((m, w) => Math.max(m, w.zIndex), 0)
     const w: Widget = {
       id: uuidv4(), space_id: spaceId, page_id: currentPageId, type,
       x: canvasCenter.x - defaults.width / 2 + (Math.random() - 0.5) * 80,
@@ -286,7 +312,7 @@ export function useWidgets(spaceId: string, currentPageId: string) {
     snapshot()
     const original = allWidgetsRef.current.find(w => w.id === id)
     if (!original) return
-    const maxZ = Math.max(0, ...allWidgetsRef.current.map(w => w.zIndex))
+    const maxZ = allWidgetsRef.current.reduce((m, w) => Math.max(m, w.zIndex), 0)
     const copy: Widget = {
       ...original, id: uuidv4(),
       x: original.x + 24, y: original.y + 24,
@@ -299,7 +325,7 @@ export function useWidgets(spaceId: string, currentPageId: string) {
 
   const bringToFront = useCallback((id: string) => {
     setAllWidgets(prev => {
-      const maxZ = Math.max(...prev.map(w => w.zIndex))
+      const maxZ = prev.reduce((m, w) => Math.max(m, w.zIndex), 0)
       const next = prev.map(w => w.id === id ? { ...w, zIndex: maxZ + 1 } : w)
       const updated = next.find(w => w.id === id)
       if (updated) debouncedSave(updated)
@@ -349,7 +375,14 @@ export function useWidgets(spaceId: string, currentPageId: string) {
       saveLocal(spaceId, updatedWidgets)
     }
 
-    await Promise.all(updatedWidgets.map(saveWidget))
+    // 只儲存有變更的 widget（base64 → Storage URL），跳過仍含 base64 的失敗項目
+    await Promise.all(updatedWidgets.map(w => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c = w.content as any
+      const hasBase64 = (typeof c?.imageUrl === 'string' && c.imageUrl.startsWith('data:')) ||
+                        (typeof c?.videoUrl === 'string' && c.videoUrl.startsWith('data:'))
+      return hasBase64 ? Promise.resolve() : saveWidget(w)
+    }))
     return { synced, failed }
   }, [spaceId])
 

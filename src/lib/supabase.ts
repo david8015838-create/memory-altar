@@ -137,7 +137,7 @@ export async function uploadFile(
 
   const ext = file instanceof File
     ? (file.name.split('.').pop() || 'bin')
-    : (folder === 'drawings' ? 'png' : 'bin')
+    : (file.type ? (file.type.split('/')[1]?.split('+')[0] || 'bin') : 'bin')
   const name = filename || `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
   const path = `${spaceId}/${folder}/${name}`
 
