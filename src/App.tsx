@@ -122,10 +122,9 @@ export default function App() {
   const handleAddWidget = (type: WidgetType) => addWidget(type, getCanvasCenter())
 
   const handleDrawingSave = (imageUrl: string) => {
+    // 先新增，再立即更新 content（React 18 functional setState 保證順序執行，不需 setTimeout）
     const widgetId = addWidget('drawing', getCanvasCenter())
-    setTimeout(() => {
-      updateWidget(widgetId as string, { content: { imageUrl, caption: '', showBorder: true } })
-    }, 100)
+    updateWidget(widgetId as string, { content: { imageUrl, caption: '', showBorder: true } })
     setShowDrawingCanvas(false)
   }
 

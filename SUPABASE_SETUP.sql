@@ -72,7 +72,7 @@ END $$;
 UPDATE widgets SET type = 'photo' WHERE type = 'polaroid';
 
 ALTER TABLE widgets ADD CONSTRAINT widgets_type_check
-  CHECK (type IN ('photo', 'sticker', 'timer', 'weather', 'video', 'drawing'));
+  CHECK (type IN ('photo', 'sticker', 'timer', 'weather', 'video', 'drawing', 'love-note'));
 
 -- ===== 6. Enable Realtime =====
 ALTER TABLE widgets REPLICA IDENTITY FULL;
